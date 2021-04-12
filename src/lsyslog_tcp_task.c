@@ -336,6 +336,25 @@ static int lsyslog_tcp_task_epoll_event_tcp_fd (
                 return -1;
             }
 
+
+            // Add the clients watchdog timer
+            ret = epoll_ctl(
+                lsyslog->tcp_task_epoll_fd,
+                EPOLL_CTL_ADD,
+                lsyslog->clients[i].watchdog.timer_fd,
+                &(struct epoll_event){
+                    .events = EPOLLIN | EPOLLERR | EPOLLHUP | EPOLLONESHOT,
+                    .data = {
+                        .ptr = &lsyslog->clients[i].watchdog
+                    }
+                }
+            );
+            if (-1 == ret) {
+                syslog(LOG_ERR, "%s:%d:%s: epoll_ctl: %s", __FILE__, __LINE__, __func__, strerror(errno));
+                return -1;
+            }
+
+
             // Add the client to epoll
             ret = epoll_ctl(
                 lsyslog->tcp_task_epoll_fd,
@@ -353,22 +372,6 @@ static int lsyslog_tcp_task_epoll_event_tcp_fd (
                 return -1;
             }
 
-            // And the clients watchdog timer
-            ret = epoll_ctl(
-                lsyslog->tcp_task_epoll_fd,
-                EPOLL_CTL_ADD,
-                lsyslog->clients[i].watchdog.timer_fd,
-                &(struct epoll_event){
-                    .events = EPOLLIN | EPOLLERR | EPOLLHUP | EPOLLONESHOT,
-                    .data = {
-                        .ptr = &lsyslog->clients[i].watchdog
-                    }
-                }
-            );
-            if (-1 == ret) {
-                syslog(LOG_ERR, "%s:%d:%s: epoll_ctl: %s", __FILE__, __LINE__, __func__, strerror(errno));
-                return -1;
-            }
 
             // Before we go, let's re-arm the accept fd on epoll
             ret = epoll_ctl(
