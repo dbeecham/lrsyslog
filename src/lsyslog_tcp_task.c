@@ -91,8 +91,6 @@ static int lsyslog_tcp_task_epoll_event_client_fd (
         return 0;
     }
 
-    syslog(LOG_INFO, "%s:%d:%s: read %.*s", __FILE__, __LINE__, __func__, bytes_read, buf);
-
     // We read some data, so so let's kick the clients watchdog timer
     // arm timerfd
     ret = timerfd_settime(
@@ -262,8 +260,6 @@ int lsyslog_tcp_task_client_log_cb (
         syslog(LOG_ERR, "%s:%d:%s: partial write of %d bytes to pipe!", __FILE__, __LINE__, __func__, bytes_written);
         return 0;
     }
-
-    syslog(LOG_INFO, "%s:%d:%s: PUB logs.%.*s.out <n>RN{\"message\":\"%.*s\"}RN", __FILE__, __LINE__, __func__, log->host_i, log->host, log->msg_i, log->msg);
 
     return 0;
     (void)ret;

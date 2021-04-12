@@ -71,7 +71,7 @@
     tag := (
         [A-Za-z0-9.+\-]{1,128} >to(tag_init) $(tag_copy)
         ' ' @{fgoto process_id;}
-    ) $err{ syslog(LOG_WARNING, "%s:%d:%s: failed to parse tag at %c\n", __FILE__, __LINE__, __func__, *p); fgoto gobble; };
+    ) $err{ syslog(LOG_WARNING, "%s:%d:%s: failed to parse tag at %c, buf is \"%.*s\"\n", __FILE__, __LINE__, __func__, *p, buf, buf_len); fgoto gobble; };
 
     action host_init {
         log->host_i = 0;
