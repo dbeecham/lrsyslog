@@ -39,7 +39,7 @@
 #endif 
 
 #ifndef PORT
-#define PORT "514"
+#define PORT "30514"
 #endif
 
 #ifndef MAX_CLIENTS
