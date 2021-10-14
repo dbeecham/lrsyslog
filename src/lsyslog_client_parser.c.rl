@@ -43,13 +43,14 @@
 
     structured_data := (
         '- ' @{fgoto message;} |
-        '[timeQuality ' (
+        ( '[timeQuality ' (
             ' ' |
             'tzKnown="' ('1' | '0') '"' |
             'isSynced="' ('1' | '0') '"' |
             'syncAccuracy="' digit+ '"'
-        )* '] ' @{fgoto message;}
-    ) $err{ syslog(LOG_WARNING, "%s:%d:%s: failed to parse structured data at %c\n", __FILE__, __LINE__, __func__, *p); fgoto gobble; };
+        )* '] ' @{fgoto message;} ) |
+        ' ' @{fgoto message;}
+    ) $err{ syslog(LOG_WARNING, "%s:%d:%s: failed to parse structured data at 0x%02x\n", __FILE__, __LINE__, __func__, fc, fc); fgoto gobble; };
 
     message_id := (
         '- ' @{fgoto structured_data;}
@@ -68,10 +69,18 @@
         log->tag[log->tag_i++] = *p;
     }
 
+    action tag_unknown {
+        memcpy(log->tag, "unknown", strlen("unknown"));
+        log->tag_i = strlen("unknown");
+    }
+
+    # rsyslog logs have an additional space between the hostname and the tag;
+    # i'm not sure why.
     tag := (
-        [A-Za-z0-9.+\-]{1,128} >to(tag_init) $(tag_copy)
+        ' '?
+        ('-' @tag_unknown | ([A-Za-z0-9.+] [A-Za-z0-9.+\-]{0,127} >to(tag_init) $(tag_copy)))
         ' ' @{fgoto process_id;}
-    ) $err{ syslog(LOG_WARNING, "%s:%d:%s: failed to parse tag at %c, buf is \"%.*s\"\n", __FILE__, __LINE__, __func__, *p, buf, buf_len); fgoto gobble; };
+    ) $err{ syslog(LOG_WARNING, "%s:%d:%s: failed to parse tag at %c, buf=%.*s\n", __FILE__, __LINE__, __func__, *p, buf_len, buf); fgoto gobble; };
 
     action host_init {
         log->host_i = 0;

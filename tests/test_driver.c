@@ -91,6 +91,53 @@ void test_lsyslog_client_parser_parses_basic_log() {
 }
 
 
+void test_lsyslog_client_parser_parses_log_with_no_tag() {
+    int ret = 0;
+    struct lsyslog_syslog_s lsyslog_syslog = {0};
+    log_cb_called = 0;
+    log_cb_pid = 0;
+
+    ret = lsyslog_client_parser_init(
+        /* parser = */ &lsyslog_syslog,
+        /* log_cb = */ log_cb,
+        /* context = */ NULL,
+        /* arg = */ NULL
+    );
+    if (-1 == ret) {
+        printf("%s:%d:%s: lsyslog_client_parser_init returned -1\n", __FILE__, __LINE__, __func__);
+        exit(EXIT_FAILURE);
+    }
+
+    char buf[] = "<44>1 2021-04-28T10:28:20.080548+00:00 091831543131364b  - - -  action 'action-2-builtin:omfwd' suspended (module 'builtin:omfwd'), retry 0. There should be messages before this one giving the reason for suspension. [v8.38.0 try http://www.rsyslog.com/e/2007 ]\n";
+    int buf_len = strlen(buf);
+
+    ret = lsyslog_client_parser_parse(
+        /* parser = */ &lsyslog_syslog,
+        /* buf = */ buf,
+        /* buf_len = */ buf_len
+    );
+    if (-1 == ret) {
+        printf("%s:%d:%s: lsyslog_client_parser_parse returned -1\n", __FILE__, __LINE__, __func__);
+        exit(EXIT_FAILURE);
+    }
+
+    if (1 != log_cb_called) {
+        printf("%s:%d:%s: log_cb_called is %d, but expected it to be 1\n", __FILE__, __LINE__, __func__, log_cb_called);
+        exit(EXIT_FAILURE);
+    }
+    if (-1 != log_cb_pid) {
+        printf("%s:%d:%s: log_cb_pid is %d, but expected it to be -1\n", __FILE__, __LINE__, __func__, log_cb_pid);
+        exit(EXIT_FAILURE);
+    }
+
+    char host[] = "091831543131364b";
+    if (strlen(host) != log_cb_host_len) {
+        printf("%s:%d:%s: host_len is %d, expected %d\n", __FILE__, __LINE__, __func__, log_cb_host_len, strlen(host));
+        exit(EXIT_FAILURE);
+    }
+}
+
+
 void test_lsyslog_client_parser_parses_log_with_accuracy() {
     int ret = 0;
     struct lsyslog_syslog_s lsyslog_syslog = {0};
@@ -315,12 +362,14 @@ int main (
 )
 {
     
-    test_lsyslog_client_parser_init();
-    test_lsyslog_client_parser_parses_basic_log();
-    test_lsyslog_client_parser_parses_log_with_accuracy();
-    test_lsyslog_client_parser_parses_log_from_gwy01_0();
-    test_lsyslog_client_parser_parses_log_from_gwy01_1();
-    test_lsyslog_client_parser_parses_facilities_and_severities();
-    test_lsyslog_client_parser_does_not_parse_invalid_privals();
+//    test_lsyslog_client_parser_init();
+//    test_lsyslog_client_parser_parses_basic_log();
+//    test_lsyslog_client_parser_parses_log_with_accuracy();
+//    test_lsyslog_client_parser_parses_log_from_gwy01_0();
+//    test_lsyslog_client_parser_parses_log_from_gwy01_1();
+//    test_lsyslog_client_parser_parses_facilities_and_severities();
+//    test_lsyslog_client_parser_does_not_parse_invalid_privals();
+    test_lsyslog_client_parser_parses_log_with_no_tag();
+
     return 0;
 }

@@ -61,9 +61,6 @@ all: lsyslog
 
 lsyslog: lsyslog.o lsyslog_tcp_task.o lsyslog_nats_task.o lsyslog_client_parser.o nats_parser.o gwy01_parser.o
 
-cscope.files: lsyslog.c.deps #lsyslog_tcp_task.c.deps lsyslog_nats_task.c.deps lsyslog_client_parser.c.deps 
-	$(Q)cat lsyslog.c.deps #hw_tcp_task.c.deps hw_nats_task.c.deps hw_client_parser.c.deps | sort | uniq > $@
-
 # }}}
 
 

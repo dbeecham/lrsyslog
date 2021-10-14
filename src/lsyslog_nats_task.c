@@ -238,10 +238,8 @@ int lsyslog_nats_task_connect (
 {
 
     int ret = 0;
-
-    // NOTE TO SELF:
-    // remember to include netinet/in.h, arpa/inet.h, netdb.h, sys/socket.h
     struct addrinfo *servinfo, *p;
+
     ret = getaddrinfo(
         /* host = */ NATS_HOST,
         /* port = */ NATS_PORT, 
@@ -282,6 +280,7 @@ int lsyslog_nats_task_connect (
         // Break out of the loop.
         break;
     }
+
     // Remember to free up the servinfo data!
     freeaddrinfo(servinfo);
 
@@ -314,6 +313,23 @@ int lsyslog_nats_task_connect (
 }
 
 
+static int lsyslog_nats_task_init (
+    struct lsyslog_s * lsyslog
+)
+{
+
+    int ret = 0;
+
+    ret = nats_parser_init(&lsyslog->nats_parser, lsyslog_nats_task_ping_cb, lsyslog, NULL);
+    if (-1 == ret) {
+        syslog(LOG_ERR, "%s:%d:%s: nats_parser_init returned -1", __FILE__, __LINE__, __func__);
+        return -1;
+    }
+
+    return 0;
+}
+
+
 void * lsyslog_nats_task (
     void * arg
 )
@@ -322,12 +338,21 @@ void * lsyslog_nats_task (
     int ret = 0;
 
     struct lsyslog_s * lsyslog = arg;
+    if (NULL == lsyslog) {
+        syslog(LOG_ERR, "%s:%d:%s: lsyslog pointer is NULL", __FILE__, __LINE__, __func__);
+        return -1;
+    }
     if (8090 != lsyslog->sentinel) {
         syslog(LOG_ERR, "%s:%d:%s: sentinel is wrong!", __FILE__, __LINE__, __func__);
         exit(EXIT_FAILURE);
     }
 
-    nats_parser_init(&lsyslog->nats_parser, lsyslog_nats_task_ping_cb, lsyslog, NULL);
+    ret = lsyslog_nats_task_init(lsyslog);
+    if (-1 == ret) {
+        syslog(LOG_ERR, "%s:%d:%s: lsyslog_nats_task_init returned -1", __FILE__, __LINE__, __func__);
+        return -1;
+    }
+
 
     ret = lsyslog_nats_task_connect(lsyslog);
     if (-1 == ret) {
