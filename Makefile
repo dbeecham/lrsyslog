@@ -18,7 +18,7 @@
 #       speed! Don't use for cross compilation.
 #   -fpie -Wl,-pie
 #       don't use along with -fPIE and -shared for shared libraries
-CFLAGS         = -Iinclude -Iinc -Isrc -Wall -Wextra \
+CFLAGS         = -Iinclude -Iinc -Isrc -Wall -Wextra -Wno-unused-variable \
                  -Wno-implicit-fallthrough -Wno-unused-const-variable \
                  -std=c11 -O1 -g3 -D_FORTIFY_SOURCE=2 -fexceptions \
                  -fasynchronous-unwind-tables -fpie -Wl,-pie \

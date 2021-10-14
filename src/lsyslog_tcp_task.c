@@ -187,9 +187,11 @@ static int lsyslog_tcp_task_epoll_event_client_timer_fd (
     }
     close(client->watchdog.timer_fd);
 
+    syslog(LOG_INFO, "%s:%d:%s: client '%.*s' has not sent any data in %d seconds, closing connection",
+        __FILE__, __LINE__, __func__, client->log.host_i, client->log.host, CLIENT_PING_TIMEOUT_S);
+
     *client = (struct lsyslog_client_s){0};
     
-    syslog(LOG_INFO, "%s:%d:%s: client disconnected", __FILE__, __LINE__, __func__);
     return 0;
 }
 
