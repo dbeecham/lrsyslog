@@ -51,7 +51,7 @@
 #endif
 
 #ifndef CLIENT_PING_TIMEOUT_S
-#define CLIENT_PING_TIMEOUT_S 8
+#define CLIENT_PING_TIMEOUT_S 30
 #endif
 
 
