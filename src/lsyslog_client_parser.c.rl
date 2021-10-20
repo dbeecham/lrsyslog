@@ -78,7 +78,7 @@
     # i'm not sure why.
     tag := (
         ' '?
-        ('-' @tag_unknown | ([A-Za-z0-9.+] [A-Za-z0-9.+\-]{0,127} >to(tag_init) $(tag_copy)))
+        ('-' @tag_unknown | ([A-Za-z0-9.+] >to(tag_init) $(tag_copy) [A-Za-z0-9.+\-]{0,127} $(tag_copy)))
         ' ' @{fgoto process_id;}
     ) $err{ syslog(LOG_WARNING, "%s:%d:%s: failed to parse tag at %c, buf=%.*s\n", __FILE__, __LINE__, __func__, *p, buf_len, buf); fgoto gobble; };
 
@@ -101,7 +101,7 @@
 
     version := (
         '1 ' @{fgoto date;}
-    ) $err{ syslog(LOG_WARNING, "%s:%d:%s: failed to parse version at %c\n", __FILE__, __LINE__, __func__, *p); fgoto gobble; };
+    ) $err{ syslog(LOG_WARNING, "%s:%d:%s: failed to parse version at %c, buf=%.*s\n", __FILE__, __LINE__, __func__, *p, buf_len, buf); fgoto gobble; };
 
     priority = (
         '<' (

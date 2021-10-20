@@ -50,9 +50,44 @@ static int lsyslog_tcp_task_epoll_event_client_fd (
 
     bytes_read = read(client->fd, buf, TCP_READ_BUF_LEN);
     if (-1 == bytes_read) {
-        syslog(LOG_ERR, "%s:%d:%s: read: %s", __FILE__, __LINE__, __func__, strerror(errno));
-        return -1;
+
+        // Remember to EPOLL_CTL_DEL *before* closing the file descriptor, see
+        // https://idea.popcount.org/2017-03-20-epoll-is-fundamentally-broken-22/
+        ret = epoll_ctl(
+            lsyslog->tcp_task_epoll_fd,
+            EPOLL_CTL_DEL,
+            client->fd,
+            NULL
+        );
+        if (-1 == ret) {
+            syslog(LOG_ERR, "%s:%d:%s: epoll_ctl: %s", __FILE__, __LINE__, __func__, strerror(errno));
+            return -1;
+        }
+
+        close(client->fd);
+
+
+        // Close the client watchdog timer as well
+        // Remember to EPOLL_CTL_DEL *before* closing the file descriptor, see
+        // https://idea.popcount.org/2017-03-20-epoll-is-fundamentally-broken-22/
+        ret = epoll_ctl(
+            lsyslog->tcp_task_epoll_fd,
+            EPOLL_CTL_DEL,
+            client->watchdog.timer_fd,
+            NULL
+        );
+        if (-1 == ret) {
+            syslog(LOG_ERR, "%s:%d:%s: epoll_ctl: %s", __FILE__, __LINE__, __func__, strerror(errno));
+            return -1;
+        }
+
+        close(client->watchdog.timer_fd);
+
+        // free the client slot
+        *client = (struct lsyslog_client_s){0};
+        return 0;
     }
+
     if (0 == bytes_read) {
         // Client disconnected, clear out the clients stuff.
 

@@ -53,6 +53,8 @@ int lsyslog_nats_task_ping_cb (
     }
 
     return 0;
+    (void)parser;
+    (void)arg;
 }
 
 
@@ -340,7 +342,7 @@ void * lsyslog_nats_task (
     struct lsyslog_s * lsyslog = arg;
     if (NULL == lsyslog) {
         syslog(LOG_ERR, "%s:%d:%s: lsyslog pointer is NULL", __FILE__, __LINE__, __func__);
-        return -1;
+        return (void*)-1;
     }
     if (8090 != lsyslog->sentinel) {
         syslog(LOG_ERR, "%s:%d:%s: sentinel is wrong!", __FILE__, __LINE__, __func__);
@@ -350,7 +352,7 @@ void * lsyslog_nats_task (
     ret = lsyslog_nats_task_init(lsyslog);
     if (-1 == ret) {
         syslog(LOG_ERR, "%s:%d:%s: lsyslog_nats_task_init returned -1", __FILE__, __LINE__, __func__);
-        return -1;
+        return (void*)-1;
     }
 
 
