@@ -20,10 +20,10 @@
 #       don't use along with -fPIE and -shared for shared libraries
 CFLAGS         = -Iinclude -Iinc -Isrc -Wall -Wextra -Wno-unused-variable \
                  -Wno-implicit-fallthrough -Wno-unused-const-variable \
-                 -std=c11 -O1 -g3 -D_FORTIFY_SOURCE=2 -fexceptions \
+                 -std=c11 -O0 -g3 -D_FORTIFY_SOURCE=2 -fexceptions \
                  -fasynchronous-unwind-tables -fpie -Wl,-pie \
                  -fstack-protector-strong -grecord-gcc-switches \
-                 -Werror=format-security \
+                 -Werror=format-security -Wno-unused-parameter \
                  -Werror=implicit-function-declaration -Wl,-z,defs -Wl,-z,now \
                  -Wl,-z,relro -pthread $(EXTRA_CFLAGS)
 LDFLAGS        = -O0 -g3 $(EXTRA_LDFLAGS)
@@ -123,9 +123,7 @@ test: CFLAGS += -I./vendor/munit/ -fprofile-arcs -ftest-coverage
 test: LDLIBS += -lgcov --coverage
 test: test_driver
 	@printf "$(TEST_COLOR)TEST$(NO_COLOR) $@\n"
-	$(Q)./test_driver \
-		&& gcov src/*.c src/*.c.rl \
-		&& gcovr -r . -e ".*munit.c" -e "tests/test.*.c"
+	$(Q)./test_driver
 
 
 # The 'check' target is primarily for testing *the compiled target*; i.e. if

@@ -243,8 +243,8 @@ int lsyslog_nats_task_connect (
     struct addrinfo *servinfo, *p;
 
     ret = getaddrinfo(
-        /* host = */ NATS_HOST,
-        /* port = */ NATS_PORT, 
+        /* host = */ CONFIG_NATS_HOST,
+        /* port = */ CONFIG_NATS_PORT, 
         /* hints = */ &(struct addrinfo) {
             .ai_family = AF_UNSPEC,
             .ai_socktype = SOCK_STREAM

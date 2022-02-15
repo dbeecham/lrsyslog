@@ -255,8 +255,8 @@ static int lsyslog_tcp_server_start (
 
     struct addrinfo *servinfo, *p;
     ret = getaddrinfo(
-        /* host = */ HOST,
-        /* port = */ PORT, 
+        /* host = */ CONFIG_HOST,
+        /* port = */ CONFIG_PORT, 
         /* hints = */ &(struct addrinfo) {
             .ai_family = AF_UNSPEC,
             .ai_socktype = SOCK_STREAM
@@ -374,7 +374,7 @@ int main (
     }
 
     // Create tcp listener threads
-    for (int i = 0; i < NUM_THREADS; i++) {
+    for (int i = 0; i < CONFIG_NUM_THREADS; i++) {
         ret = pthread_create(&lsyslog.tcp_task_threads[i], NULL, lsyslog_tcp_task, &lsyslog);
         if (0 != ret) {
             syslog(LOG_ERR, "%s:%d: pthread_create: %s", __func__, __LINE__, strerror(errno));

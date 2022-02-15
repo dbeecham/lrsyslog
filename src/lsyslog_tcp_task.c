@@ -24,7 +24,6 @@
 #include "lsyslog.h"
 #include "lsyslog_tcp_task.h"
 #include "lsyslog_client_parser.h"
-#include "gwy01_parser.h"
 
 #define EPOLL_NUM_EVENTS 8
 
@@ -220,10 +219,11 @@ static int lsyslog_tcp_task_epoll_event_client_timer_fd (
         syslog(LOG_ERR, "%s:%d:%s: epoll_ctl: %s", __FILE__, __LINE__, __func__, strerror(errno));
         return -1;
     }
+
     close(client->watchdog.timer_fd);
 
-    syslog(LOG_INFO, "%s:%d:%s: client '%.*s' has not sent any data in %d seconds, closing connection",
-        __FILE__, __LINE__, __func__, client->log.host_i, client->log.host, CLIENT_PING_TIMEOUT_S);
+    syslog(LOG_INFO, "%s:%d:%s: client has not sent any data in %d seconds, closing connection",
+        __FILE__, __LINE__, __func__, CLIENT_PING_TIMEOUT_S);
 
     *client = (struct lsyslog_client_s){0};
     
@@ -231,58 +231,174 @@ static int lsyslog_tcp_task_epoll_event_client_timer_fd (
 }
 
 
+static const char * lsyslog_tcp_task_facility_str (
+    const uint8_t facility
+)
+{
+    switch (facility) {
+
+        case 0:
+            return "kern";
+
+        case 1:
+            return "user";
+
+        case 2:
+            return "mail";
+
+        case 3:
+            return "daemon";
+
+        case 4:
+            return "auth";
+
+        case 5:
+            return "syslog";
+
+        case 6:
+            return "lpr";
+
+        case 7:
+            return "news";
+
+        case 8:
+            return "uucp";
+
+        case 9:
+            return "clock";
+
+        case 10:
+            return "authpriv";
+
+        case 11:
+            return "ftp";
+
+        case 12:
+            return "ntp";
+
+        case 13:
+            return "audit";
+
+        case 14:
+            return "alert";
+
+        case 15:
+            return "clock2";
+
+        case 16:
+            return "local0";
+
+        case 17:
+            return "local1";
+
+        case 18:
+            return "local2";
+
+        case 19:
+            return "local3";
+
+        case 20:
+            return "local4";
+
+        case 21:
+            return "local5";
+
+        case 22:
+            return "local6";
+
+        case 23:
+            return "local7";
+
+        default:
+            return "unknown";
+    }
+}
+
+
+static const char * lsyslog_tcp_task_severity_str (
+    const uint8_t severity
+)
+{
+    switch (severity) {
+        case LOG_EMERG:
+            return "emerg";
+
+        case LOG_ALERT:
+            return "alert";
+
+        case LOG_ERR:
+            return "err";
+
+        case LOG_WARNING:
+            return "warning";
+
+        case LOG_NOTICE:
+            return "notice";
+
+        case LOG_INFO:
+            return "info";
+
+        case LOG_DEBUG:
+            return "debug";
+
+        default:
+            return "unknown";
+    }
+}
+
+
 int lsyslog_tcp_task_client_log_cb (
-    struct lsyslog_syslog_s * log,
-    void * context,
-    void * arg
+    const char * host,
+    const uint32_t host_len,
+    const char * tag,
+    const uint32_t tag_len,
+    const uint32_t facility,
+    const uint32_t severity,
+    const uint32_t pid,
+    const char * msg,
+    const uint32_t msg_len,
+    void * user_data
 )
 {
     int ret = 0;
     int bytes_written = 0;
 
-    struct lsyslog_client_s * client = arg;
+    struct lsyslog_client_s * client = user_data;
     if (18091 != client->sentinel) {
         syslog(LOG_ERR, "%s:%d:%s: client sentinel is wrong!", __FILE__, __LINE__, __func__);
         return -1;
     }
 
-    struct lsyslog_s * lsyslog = context;
+    struct lsyslog_s * lsyslog = client->lsyslog;
     if (8090 != lsyslog->sentinel) {
         syslog(LOG_ERR, "%s:%d:%s: lsyslog sentinel is wrong!", __FILE__, __LINE__, __func__);
         return -1;
     }
 
-    if (log->msg_i < 0) {
-        syslog(LOG_ERR, "%s:%d:%s: negative msg_len", __FILE__, __LINE__, __func__);
-        return -1;
-    }
-
     struct lsyslog_pipe_msg_s pipe_msg = {0};
-    pipe_msg.severity = log->severity;
-    pipe_msg.facility = log->facility;
+    pipe_msg.severity = severity;
+    pipe_msg.facility = facility;
 
     pipe_msg.topic_len = snprintf(
         pipe_msg.topic,
         128,
-        "lsyslog.%.*s.%.*s.%d.%d.out",
-        log->host_i,
-        log->host,
-        log->tag_i,
-        log->tag,
-        log->facility,
-        log->severity
+        "%.*s.%.*s.%s.%s.out",
+        host_len, host,
+        tag_len, tag,
+        lsyslog_tcp_task_facility_str(facility),
+        lsyslog_tcp_task_severity_str(severity)
     );
     if (-1 == pipe_msg.topic_len) {
         syslog(LOG_ERR, "%s:%d:%s: snprintf: %s", __FILE__, __LINE__, __func__, strerror(errno));
         return -1;
     }
 
-    int msg_len = 1024;
-    if (log->msg_i < msg_len) {
-        msg_len = log->msg_i;
+    uint32_t msg_len_clamped = 1024;
+    if (msg_len < msg_len_clamped) {
+        msg_len_clamped = msg_len;
     }
-    memcpy(&pipe_msg.msg, log->msg, msg_len);
-    pipe_msg.msg_len = msg_len;
+    memcpy(&pipe_msg.msg, msg, msg_len_clamped);
+    pipe_msg.msg_len = msg_len_clamped;
 
     bytes_written = write(lsyslog->pipe_fd[1], &pipe_msg, sizeof(struct lsyslog_pipe_msg_s));
     if (-1 == bytes_written) {
@@ -300,7 +416,6 @@ int lsyslog_tcp_task_client_log_cb (
 
     return 0;
     (void)ret;
-    (void)log;
 }
 
 
@@ -322,20 +437,20 @@ static int lsyslog_tcp_task_epoll_event_tcp_fd (
     }
 
     // First off, we need to find a free spot for the client.
-    for (int i = 0; i < MAX_CLIENTS; i++) {
+    for (int i = 0; i < CONFIG_MAX_CLIENTS; i++) {
 
         if (0 == lsyslog->clients[i].sentinel) {
 
             // This spot is free! Assign it!
             lsyslog->clients[i].sentinel = 18091;
             lsyslog->clients[i].fd = client_fd;
+            lsyslog->clients[i].lsyslog = lsyslog;
 
             // Initialize the client parser
             ret = lsyslog_client_parser_init(
                 &lsyslog->clients[i].log,
                 /* log_cb = */ lsyslog_tcp_task_client_log_cb,
-                /* context = */ lsyslog,
-                /* arg = */ &lsyslog->clients[i]
+                /* user_data = */ &lsyslog->clients[i]
             );
             if (-1 == ret) {
                 syslog(LOG_ERR, "%s:%d:%s: lsyslog_client_parser_init returned %d", __FILE__, __LINE__, __func__, ret);

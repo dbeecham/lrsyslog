@@ -1,2 +1,8 @@
 *.swp
 *.o
+*.gcda
+*.gcno
+*.bak
+test_driver
+.ccls-cache
+lsyslog

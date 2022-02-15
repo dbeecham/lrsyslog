@@ -18,32 +18,32 @@
 #define EPOLL_NUM_EVENTS 8
 #define NATS_BUF_LEN 2048
 
-#ifndef NUM_THREADS
-#define NUM_THREADS 4
+#ifndef CONFIG_NUM_THREADS
+#define CONFIG_NUM_THREADS 4
 #endif
 
 #ifndef TCP_LISTEN_BACKLOG
 #define TCP_LISTEN_BACKLOG 8
 #endif
 
-#ifndef NATS_HOST
-#define NATS_HOST "127.0.0.1"
+#ifndef CONFIG_NATS_HOST
+#define CONFIG_NATS_HOST "127.0.0.1"
 #endif
 
-#ifndef NATS_PORT
-#define NATS_PORT "4222"
+#ifndef CONFIG_NATS_PORT
+#define CONFIG_NATS_PORT "4222"
 #endif
 
-#ifndef HOST
-#define HOST "0.0.0.0"
+#ifndef CONFIG_HOST
+#define CONFIG_HOST "0.0.0.0"
 #endif 
 
-#ifndef PORT
-#define PORT "30514"
+#ifndef CONFIG_PORT
+#define CONFIG_PORT "30514"
 #endif
 
-#ifndef MAX_CLIENTS
-#define MAX_CLIENTS 64
+#ifndef CONFIG_MAX_CLIENTS
+#define CONFIG_MAX_CLIENTS 64
 #endif
 
 #ifndef TCP_READ_BUF_LEN
@@ -85,9 +85,9 @@ struct lsyslog_s {
     int nats_fd;
     int nats_task_epoll_fd;
     struct nats_parser_s nats_parser;
-    pthread_t tcp_task_threads[NUM_THREADS];
+    pthread_t tcp_task_threads[CONFIG_NUM_THREADS];
     pthread_t nats_thread;
     int signal_fd;
     int pipe_fd[2];
-    struct lsyslog_client_s clients[MAX_CLIENTS];
+    struct lsyslog_client_s clients[CONFIG_MAX_CLIENTS];
 };
