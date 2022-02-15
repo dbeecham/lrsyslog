@@ -39,7 +39,7 @@
 #endif 
 
 #ifndef CONFIG_PORT
-#define CONFIG_PORT "30514"
+#define CONFIG_PORT "514"
 #endif
 
 #ifndef CONFIG_MAX_CLIENTS
