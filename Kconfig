@@ -1,0 +1,146 @@
+mainmenu "lrsyslog"
+
+
+menu "Useful compile-time flags"
+
+    choice 
+        prompt "Compile-time optimizations"
+        config OPTIMIZE_SMALL
+            bool "Small (-Os)"
+        config OPTIMIZE_DEBUG
+            bool "Debug (-Og -g3)"
+        config OPTIMIZE_DEFAULT
+            bool "Default"
+    endchoice
+
+    config MARCH_NATIVE
+        bool "Build with -march=native"
+        default n
+
+    config DEBUG
+        bool "Build with -DDEBUG"
+        default n
+
+    config PIE
+        bool "Build Position Independent Code (PIE)"
+        default y
+        help
+            Enables Position Independent Code, which means Address Space Layout
+            Randomization. ASLR is very good and secure.  (-fpie, -Wl,-pie)
+
+    config STATIC
+        depends on !PIE
+        bool "Build static binary"
+        default n
+        help
+            Build application as a statically linked binary. (-static)
+
+    config DISABLE_LAZY_BINDING
+        bool "Disable lazy binding"
+        default y
+        help
+            Disables lazy binding of shared libraries, forcing all libraries to
+            load immediately at application startup. This is recommended because
+            any delayed symbol binding is subject to ELF header rewriting attacks.
+            Enable this, and also enable RELRO.
+
+    config RELRO
+        bool "Read-only ELF segments after relocation"
+        default y
+        help
+            Marks ELF sections as read-only after relocation. If lazy binding is
+            disabled, all symbols will be written to the ELF header at startup and
+            marked as read-only, mitigating some nasty attacks. (-Wl,-z,relro)
+
+    config RBUD
+        bool "Runtime Buffer Overflow Detection"
+        default y
+        help
+           Enabled runtime buffer overflow detection on memcpy, mempcpy,
+           memmove, memset, strcpy, stpcpy, strncpy, strcat, strncat, sprintf,
+           vsprintf, snprintf, vsnprintf, and gets.  (-D_FORTIFY_SOURCE=2)
+
+    config DETECT_UNDERLINKING
+        bool "Reject underlinking"
+        default y
+        help
+            Makes the linker treat any undefined symbols in the linked object files
+            (including static libraries) as errors. (-Wl,-z,defs)
+
+    config STACK_CLASH_PROTECTION
+        bool "Stack Clash Protection"
+        default y
+        help
+            Enables stack clash protection, where the stack and the heap collide
+            and cause security vulnerabilities. (-fstack-clash-protection)
+
+    choice 
+        prompt "Stack Smashing Protection"
+        config STACK_PROTECTOR_ALL
+            bool "All functions"
+        config STACK_PROTECTOR_STRONG
+            bool "Only vulnerable functions"
+        config STACK_PROTECTOR
+            bool "Only the most vulnerable functions"
+        config STACK_PROTECTOR_NONE
+            bool "No stack smashing protection"
+    endchoice
+
+    config ASAN
+        bool "AddressSanitizer"
+        default y
+        help
+            Enables the AddressSanitizer memory error detector, which consists of a
+            compiler module and a run-time library. It can detect out-of-bounds
+            access to heap/stack/globals, use-after-free, use-after-return,
+            use-after-scope, double-free, invalid free, and memory leaks.
+
+    config UBSAN
+        bool "UndefinedBehaviourSanitizer"
+        default y
+        help
+            UndefinedBehaviourSanitizer can, at compile time, catch various
+            kinds of undefined behaviour such as
+             * Array subscript out of bounds
+             * Bitwise shifts out of bounds
+             * Dereferencing misaligned or null pointers
+             * Signed integer overflow
+             * Conversion between floating-point types which would overflow the
+               destination
+endmenu
+
+
+menu "NATS host"
+    config NATS_HOST
+        string "NATS hosts"
+        default "127.0.0.1"
+
+    config NATS_PORT
+        string "NATS port"
+        default "4222"
+endmenu
+
+menu "syslog host/port"
+    config HOST
+        string "syslog listen address"
+        default "0.0.0.0"
+
+    config PORT
+        string "syslog listen port"
+        default "514"
+endmenu
+
+config MAX_CLIENTS
+    int "max simultaneous clients"
+    default 64
+    help
+        Each client adds about 1.4k stack memory usage.
+
+config NUM_THREADS
+    int "Number of worker threads"
+    default 4
+
+
+config SYSLOG_IDENT
+    string "SYSLOG_IDENT"
+    default "lrsyslog-custom"

@@ -19,58 +19,64 @@
 #include <netinet/in.h>
 #include <netdb.h>
 
-#include "lsyslog.h"
-#include "lsyslog_tcp_task.h"
-#include "lsyslog_nats_task.h"
+#include "lrsyslog.h"
+#include "lrsyslog_tcp_task.h"
+#include "lrsyslog_nats_task.h"
 
 
 #define EPOLL_NUM_EVENTS 8
 
-int lsyslog_init (
-    struct lsyslog_s * lsyslog
+int lrsyslog_init (
+    struct lrsyslog_s * lrsyslog
 )
 {
 
     int ret = 0;
 
     // main thread needs an epoll
-    lsyslog->epoll_fd = epoll_create1(EPOLL_CLOEXEC);
-    if (-1 == lsyslog->epoll_fd) {
+    lrsyslog->epoll_fd = epoll_create1(EPOLL_CLOEXEC);
+    if (-1 == lrsyslog->epoll_fd) {
         syslog(LOG_ERR, "%s:%d:%s: epoll_create1: %s", __FILE__, __LINE__, __func__, strerror(errno));
         return -1;
     }
 
     // tcp threads also needs an epoll
-    lsyslog->tcp_task_epoll_fd = epoll_create1(EPOLL_CLOEXEC);
-    if (-1 == lsyslog->tcp_task_epoll_fd) {
+    lrsyslog->tcp_task_epoll_fd = epoll_create1(EPOLL_CLOEXEC);
+    if (-1 == lrsyslog->tcp_task_epoll_fd) {
         syslog(LOG_ERR, "%s:%d:%s: epoll_create1: %s", __FILE__, __LINE__, __func__, strerror(errno));
         return -1;
     }
 
     // And the nats task needs an epoll
-    lsyslog->nats_task_epoll_fd = epoll_create1(EPOLL_CLOEXEC);
-    if (-1 == lsyslog->nats_task_epoll_fd ) {
+    lrsyslog->nats_task_epoll_fd = epoll_create1(EPOLL_CLOEXEC);
+    if (-1 == lrsyslog->nats_task_epoll_fd ) {
         syslog(LOG_ERR, "%s:%d:%s: epoll_create1: %s", __FILE__, __LINE__, __func__, strerror(errno));
         return -1;
     }
 
     // nats task and tcp tasks communicate using a pipe
-    // lsyslog->pipe_fd[0] contains the read-end of the pipe, lsyslog->pipe_fd[1] contains the write-end.
-    ret = pipe2(lsyslog->pipe_fd, O_CLOEXEC | O_NONBLOCK);
+    // lrsyslog->pipe_fd[0] contains the read-end of the pipe, lrsyslog->pipe_fd[1] contains the write-end.
+    ret = pipe2(lrsyslog->pipe_fd, O_CLOEXEC | O_NONBLOCK);
     if (-1 == ret) {
         syslog(LOG_ERR, "%s:%d:%s: pipe2: %s", __FILE__, __LINE__, __func__, strerror(errno));
         return -1;
     }
 
+    ret = fcntl(lrsyslog->pipe_fd[0], F_SETPIPE_SZ, 1048576);
+    if (-1 == ret) {
+        syslog(LOG_ERR, "%s:%d:%s: fcntl: %s", __FILE__, __LINE__, __func__, strerror(errno));
+        return -1;
+    }
+
     // nats task needs the pipe on it's epoll
     ret = epoll_ctl(
-        lsyslog->nats_task_epoll_fd,
+        lrsyslog->nats_task_epoll_fd,
         EPOLL_CTL_ADD,
-        lsyslog->pipe_fd[0],
+        lrsyslog->pipe_fd[0],
         &(struct epoll_event){
             .events = EPOLLIN | EPOLLERR | EPOLLHUP | EPOLLONESHOT,
             .data = {
-                .fd = lsyslog->pipe_fd[0]
+                .fd = lrsyslog->pipe_fd[0]
             }
         }
     );
@@ -89,12 +95,12 @@ int lsyslog_init (
 
 
     // Create the signalfd
-    lsyslog->signal_fd = signalfd(
+    lrsyslog->signal_fd = signalfd(
         /* fd = */ -1,
         /* &sigset = */ &sigset,
         /* flags = */ SFD_NONBLOCK | SFD_CLOEXEC
     );
-    if (-1 == lsyslog->signal_fd) {
+    if (-1 == lrsyslog->signal_fd) {
         syslog(LOG_ERR, "%s:%d:%s: signalfd: %s", __FILE__, __LINE__, __func__, strerror(errno));
         return -1;
     }
@@ -114,13 +120,13 @@ int lsyslog_init (
 
     // Add the signalfd to epoll
     ret = epoll_ctl(
-        lsyslog->epoll_fd,
+        lrsyslog->epoll_fd,
         EPOLL_CTL_ADD,
-        lsyslog->signal_fd,
+        lrsyslog->signal_fd,
         &(struct epoll_event){
             .events = EPOLLIN | EPOLLERR | EPOLLHUP | EPOLLONESHOT,
             .data = {
-                .fd = lsyslog->signal_fd
+                .fd = lrsyslog->signal_fd
             }
         }
     );
@@ -133,8 +139,8 @@ int lsyslog_init (
 }
 
 
-static int lsyslog_epoll_event_signal_fd_sighup (
-    struct lsyslog_s * lsyslog,
+static int lrsyslog_epoll_event_signal_fd_sighup (
+    struct lrsyslog_s * lrsyslog,
     struct epoll_event * event,
     struct signalfd_siginfo * siginfo
 )
@@ -147,7 +153,7 @@ static int lsyslog_epoll_event_signal_fd_sighup (
     // Re-arm the fd in epoll
     // Re-arm EPOLLONESHOT file descriptor in epoll
     ret = epoll_ctl(
-        lsyslog->epoll_fd,
+        lrsyslog->epoll_fd,
         EPOLL_CTL_MOD,
         event->data.fd,
         &(struct epoll_event){
@@ -168,22 +174,22 @@ static int lsyslog_epoll_event_signal_fd_sighup (
 }
 
 
-static int lsyslog_epoll_event_signal_fd_sigint (
-    struct lsyslog_s * lsyslog,
+static int lrsyslog_epoll_event_signal_fd_sigint (
+    struct lrsyslog_s * lrsyslog,
     struct epoll_event * event,
     struct signalfd_siginfo * siginfo
 )
 {
     syslog(LOG_INFO, "%s:%d:%s: caught SIGINT - exiting!", __FILE__, __LINE__, __func__);
     exit(EXIT_SUCCESS);
-    (void)lsyslog;
+    (void)lrsyslog;
     (void)event;
     (void)siginfo;
 }
 
 
-static int lsyslog_epoll_event_signal_fd (
-    struct lsyslog_s * lsyslog,
+static int lrsyslog_epoll_event_signal_fd (
+    struct lrsyslog_s * lrsyslog,
     struct epoll_event * event
 )
 {
@@ -203,10 +209,10 @@ static int lsyslog_epoll_event_signal_fd (
 
     // Dispatch on signal number
     if (SIGHUP == siginfo.ssi_signo)
-        return lsyslog_epoll_event_signal_fd_sighup(lsyslog, event, &siginfo);
+        return lrsyslog_epoll_event_signal_fd_sighup(lrsyslog, event, &siginfo);
 
     if (SIGINT == siginfo.ssi_signo)
-        return lsyslog_epoll_event_signal_fd_sigint(lsyslog, event, &siginfo);
+        return lrsyslog_epoll_event_signal_fd_sigint(lrsyslog, event, &siginfo);
 
     // window resize events - not interesting
     if (SIGWINCH == siginfo.ssi_signo)
@@ -217,28 +223,28 @@ static int lsyslog_epoll_event_signal_fd (
 }
 
 
-static int lsyslog_epoll_event_dispatch (
-    struct lsyslog_s * lsyslog,
+static int lrsyslog_epoll_event_dispatch (
+    struct lrsyslog_s * lrsyslog,
     struct epoll_event * event
 )
 {
-    if (event->data.fd == lsyslog->signal_fd)
-        return lsyslog_epoll_event_signal_fd(lsyslog, event);
+    if (event->data.fd == lrsyslog->signal_fd)
+        return lrsyslog_epoll_event_signal_fd(lrsyslog, event);
 
     syslog(LOG_WARNING, "%s:%d:%s: No match on epoll event.", __FILE__, __LINE__, __func__);
     return -1;
 }
 
 
-static int lsyslog_epoll_handle_events (
-    struct lsyslog_s * lsyslog,
+static int lrsyslog_epoll_handle_events (
+    struct lrsyslog_s * lrsyslog,
     struct epoll_event epoll_events[EPOLL_NUM_EVENTS],
     int ep_events_len
 )
 {
     int ret = 0;
     for (int i = 0; i < ep_events_len; i++) {
-        ret = lsyslog_epoll_event_dispatch(lsyslog, &epoll_events[i]);
+        ret = lrsyslog_epoll_event_dispatch(lrsyslog, &epoll_events[i]);
         if (0 != ret) {
             return ret;
         }
@@ -247,8 +253,8 @@ static int lsyslog_epoll_handle_events (
 }
 
 
-static int lsyslog_tcp_server_start (
-    struct lsyslog_s * lsyslog
+static int lrsyslog_tcp_server_start (
+    struct lrsyslog_s * lrsyslog
 )
 {
     int ret = 0;
@@ -272,8 +278,8 @@ static int lsyslog_tcp_server_start (
     for (p = servinfo; p != NULL; p = p->ai_next) {
 
         // Create a socket
-        lsyslog->tcp_fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
-        if (-1 == lsyslog->tcp_fd) {
+        lrsyslog->tcp_fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+        if (-1 == lrsyslog->tcp_fd) {
             syslog(LOG_WARNING, "%s:%d:%s: socket: %s", __FILE__, __LINE__, __func__, strerror(errno));
             // let's try the next entry...
             continue;
@@ -283,19 +289,19 @@ static int lsyslog_tcp_server_start (
         // application after a restart even if the socket is still registered
         // in the kernel by the old application due to stale connections from
         // clients.
-        ret = setsockopt(lsyslog->tcp_fd, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int));
+        ret = setsockopt(lrsyslog->tcp_fd, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int));
         if (-1 == ret) {
             syslog(LOG_WARNING, "%s:%d:%s: setsockopt: %s", __FILE__, __LINE__, __func__, strerror(errno));
             // We don't care if this doesn't work so much - we can run without REUSEADDR.
         }
 
         // Bind the socket to the port
-        ret = bind(lsyslog->tcp_fd, p->ai_addr, p->ai_addrlen);
+        ret = bind(lrsyslog->tcp_fd, p->ai_addr, p->ai_addrlen);
         if (-1 == ret) {
             // Ok, we couldn't bind this socket - close this socket and try the
             // next hit from getaddrinfo.
             syslog(LOG_WARNING, "%s:%d:%s: bind: %s", __FILE__, __LINE__, __func__, strerror(errno));
-            close(lsyslog->tcp_fd);
+            close(lrsyslog->tcp_fd);
             continue;
         }
 
@@ -317,7 +323,7 @@ static int lsyslog_tcp_server_start (
 
     // At this point, we have successfully bound up a port. Now we just need to
     // listen for connection on the port.
-    ret = listen(lsyslog->tcp_fd, TCP_LISTEN_BACKLOG);
+    ret = listen(lrsyslog->tcp_fd, TCP_LISTEN_BACKLOG);
     if (-1 == ret) {
         syslog(LOG_ERR, "%s:%d:%s: listen: %s", __FILE__, __LINE__, __func__, strerror(errno));
         return -1;
@@ -325,13 +331,13 @@ static int lsyslog_tcp_server_start (
 
     // Add the tcp fd to tcp tasks epoll
     ret = epoll_ctl(
-        lsyslog->tcp_task_epoll_fd,
+        lrsyslog->tcp_task_epoll_fd,
         EPOLL_CTL_ADD,
-        lsyslog->tcp_fd,
+        lrsyslog->tcp_fd,
         &(struct epoll_event){
             .events = EPOLLIN | EPOLLERR | EPOLLHUP | EPOLLONESHOT,
             .data = {
-                .fd = lsyslog->tcp_fd
+                .fd = lrsyslog->tcp_fd
             }
         }
     );
@@ -354,28 +360,28 @@ int main (
 
     int ret = 0;
 
-    openlog("lsyslog", LOG_CONS | LOG_PID, LOG_USER);
+    openlog(CONFIG_SYSLOG_IDENT, LOG_CONS | LOG_PID, LOG_USER);
 
-    struct lsyslog_s lsyslog = {
+    struct lrsyslog_s lrsyslog = {
         .sentinel = 8090
     };
-    ret = lsyslog_init(&lsyslog);
+    ret = lrsyslog_init(&lrsyslog);
     if (-1 == ret) {
-        syslog(LOG_ERR, "%s:%d:%s: lsyslog_init returned %d", __FILE__, __LINE__, __func__, ret);
+        syslog(LOG_ERR, "%s:%d:%s: lrsyslog_init returned %d", __FILE__, __LINE__, __func__, ret);
         exit(EXIT_FAILURE);
     }
 
 
     // start listening for connections
-    ret = lsyslog_tcp_server_start(&lsyslog);
+    ret = lrsyslog_tcp_server_start(&lrsyslog);
     if (-1 == ret) {
-        syslog(LOG_ERR, "%s:%d:%s: lsyslog_tcp_server_start returned %d", __FILE__, __LINE__, __func__, ret);
+        syslog(LOG_ERR, "%s:%d:%s: lrsyslog_tcp_server_start returned %d", __FILE__, __LINE__, __func__, ret);
         exit(EXIT_FAILURE);
     }
 
     // Create tcp listener threads
     for (int i = 0; i < CONFIG_NUM_THREADS; i++) {
-        ret = pthread_create(&lsyslog.tcp_task_threads[i], NULL, lsyslog_tcp_task, &lsyslog);
+        ret = pthread_create(&lrsyslog.tcp_task_threads[i], NULL, lrsyslog_tcp_task, &lrsyslog);
         if (0 != ret) {
             syslog(LOG_ERR, "%s:%d: pthread_create: %s", __func__, __LINE__, strerror(errno));
             return -1;
@@ -384,7 +390,7 @@ int main (
 
 
     // And the nats thread
-    ret = pthread_create(&lsyslog.nats_thread, NULL, lsyslog_nats_task, &lsyslog);
+    ret = pthread_create(&lrsyslog.nats_thread, NULL, lrsyslog_nats_task, &lrsyslog);
     if (0 != ret) {
         syslog(LOG_ERR, "%s:%d: pthread_create: %s", __func__, __LINE__, strerror(errno));
         return -1;
@@ -394,11 +400,11 @@ int main (
     // Time for the epoll_wait loop
     int ep_events_len = 0;
     struct epoll_event ep_events[EPOLL_NUM_EVENTS];
-    for (ep_events_len = epoll_wait(lsyslog.epoll_fd, ep_events, EPOLL_NUM_EVENTS, -1);
+    for (ep_events_len = epoll_wait(lrsyslog.epoll_fd, ep_events, EPOLL_NUM_EVENTS, -1);
          ep_events_len > 0 || (-1 == ep_events_len && EINTR == errno);
-         ep_events_len = epoll_wait(lsyslog.epoll_fd, ep_events, EPOLL_NUM_EVENTS, -1))
+         ep_events_len = epoll_wait(lrsyslog.epoll_fd, ep_events, EPOLL_NUM_EVENTS, -1))
     {
-        ret = lsyslog_epoll_handle_events(&lsyslog, ep_events, ep_events_len);
+        ret = lrsyslog_epoll_handle_events(&lrsyslog, ep_events, ep_events_len);
         if (-1 == ret) {
             break;
         }

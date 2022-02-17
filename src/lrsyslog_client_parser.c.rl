@@ -1,7 +1,7 @@
 #define _POSIX_C_SOURCE 201805L
 
-#include "lsyslog.h"
-#include "lsyslog_client_parser.h"
+#include "lrsyslog.h"
+#include "lrsyslog_client_parser.h"
 
 %%{
 
@@ -95,6 +95,9 @@
     action rfc5424_tag_copy {
         log->tag[log->tag_len++] = *p;
     }
+    action rfc5424_safe_tag_copy {
+        log->tag[log->tag_len++] = '-';
+    }
     action rfc5424_tag_init {
         log->tag_len = 0;
     }
@@ -104,7 +107,10 @@
         ' '?
         ( 
             '-' @rfc5424_tag_unknown 
-            | ([A-Za-z0-9.+\-]{1,127} >to(rfc5424_tag_init) $rfc5424_tag_copy)
+            | 
+            (
+                [A-Za-z0-9+\-] $rfc5424_tag_copy | '.' $rfc5424_safe_tag_copy
+            ){1,127} >to(rfc5424_tag_init)
         )
         ' ' @{fgoto process_id;}
     ) $err{ syslog(LOG_WARNING, "%s:%d:%s: failed to parse tag at %c, buf=%.*s\n", __FILE__, __LINE__, __func__, *p, buf_len, buf); fgoto gobble; };
@@ -192,8 +198,8 @@
 
 }%%
 
-int lsyslog_client_parser_init (
-    struct lsyslog_syslog_s * log,
+int lrsyslog_client_parser_init (
+    struct lrsyslog_syslog_s * log,
     int (*log_cb)(
         const char * host,
         const uint32_t host_len,
@@ -216,8 +222,8 @@ int lsyslog_client_parser_init (
     return 0;
 }
 
-int lsyslog_client_parser_parse (
-    struct lsyslog_syslog_s * log,
+int lrsyslog_client_parser_parse (
+    struct lrsyslog_syslog_s * log,
     const char * const buf,
     const int buf_len
 )

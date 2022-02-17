@@ -12,7 +12,7 @@
 #include <sys/stat.h>
 #include <pthread.h>
 
-#include "lsyslog_client_parser.h"
+#include "lrsyslog_client_parser.h"
 #include "nats_parser.h"
 
 #define EPOLL_NUM_EVENTS 8
@@ -54,13 +54,17 @@
 #define CLIENT_PING_TIMEOUT_S 60
 #endif
 
+#ifndef CONFIG_SYSLOG_IDENT
+#define CONFIG_SYSLOG_IDENT "lrsyslog-custom"
+#endif
 
-struct lsyslog_client_watchdog_s {
+
+struct lrsyslog_client_watchdog_s {
     int sentinel;
     int timer_fd;
 };
 
-struct lsyslog_pipe_msg_s {
+struct lrsyslog_pipe_msg_s {
     int severity;
     int facility;
     int topic_len;
@@ -69,15 +73,15 @@ struct lsyslog_pipe_msg_s {
     char msg[1024];
 };
 
-struct lsyslog_client_s {
+struct lrsyslog_client_s {
     int sentinel;
     int fd;
-    struct lsyslog_client_watchdog_s watchdog; 
-    struct lsyslog_syslog_s log;
-    struct lsyslog_s * lsyslog;
+    struct lrsyslog_client_watchdog_s watchdog; 
+    struct lrsyslog_syslog_s log;
+    struct lrsyslog_s * lrsyslog;
 };
 
-struct lsyslog_s {
+struct lrsyslog_s {
     int sentinel;
     int epoll_fd;
     int tcp_fd;
@@ -89,5 +93,5 @@ struct lsyslog_s {
     pthread_t nats_thread;
     int signal_fd;
     int pipe_fd[2];
-    struct lsyslog_client_s clients[CONFIG_MAX_CLIENTS];
+    struct lrsyslog_client_s clients[CONFIG_MAX_CLIENTS];
 };

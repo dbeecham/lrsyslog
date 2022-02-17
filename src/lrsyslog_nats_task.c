@@ -18,27 +18,26 @@
 #include <netinet/in.h>
 #include <netdb.h>
 
-#include "lsyslog.h"
-#include "lsyslog_nats_task.h"
+#include "lrsyslog.h"
+#include "lrsyslog_nats_task.h"
 #include "nats_parser.h"
 
 
-int lsyslog_nats_task_ping_cb (
+int lrsyslog_nats_task_ping_cb (
     struct nats_parser_s * parser,
     void * context,
     void * arg
 )
 {
     int bytes_written = 0;
-    int ret = 0;
 
-    struct lsyslog_s * lsyslog = context;
-    if (8090 != lsyslog->sentinel) {
-        syslog(LOG_ERR, "%s:%d:%s: lsyslog sentinel is wrong!", __FILE__, __LINE__, __func__);
+    struct lrsyslog_s * lrsyslog = context;
+    if (8090 != lrsyslog->sentinel) {
+        syslog(LOG_ERR, "%s:%d:%s: lrsyslog sentinel is wrong!", __FILE__, __LINE__, __func__);
         return -1;
     }
 
-    bytes_written = write(lsyslog->nats_fd, "PONG\r\n", 6);
+    bytes_written = write(lrsyslog->nats_fd, "PONG\r\n", 6);
     if (-1 == bytes_written) {
         syslog(LOG_ERR, "%s:%d:%s: write: %s", __FILE__, __LINE__, __func__, strerror(errno));
         return -1;
@@ -58,8 +57,8 @@ int lsyslog_nats_task_ping_cb (
 }
 
 
-int lsyslog_nats_task_epoll_event_nats_fd (
-    struct lsyslog_s * lsyslog,
+int lrsyslog_nats_task_epoll_event_nats_fd (
+    struct lrsyslog_s * lrsyslog,
     struct epoll_event * event
 )
 {
@@ -81,14 +80,14 @@ int lsyslog_nats_task_epoll_event_nats_fd (
 
     // Parse the NATS data; one of the callbacks (named *_cb) will be called on
     // a successful parse.
-    ret = nats_parser_parse(&lsyslog->nats_parser, buf, bytes_read);
+    ret = nats_parser_parse(&lrsyslog->nats_parser, buf, bytes_read);
     if (-1 == ret) {
         syslog(LOG_ERR, "%s:%d:%s: nats_parser_parse returned %d", __FILE__, __LINE__, __func__, ret);
         return -1;
     }
 
     ret = epoll_ctl(
-        lsyslog->nats_task_epoll_fd,
+        lrsyslog->nats_task_epoll_fd,
         EPOLL_CTL_MOD,
         event->data.fd,
         &(struct epoll_event){
@@ -105,8 +104,8 @@ int lsyslog_nats_task_epoll_event_nats_fd (
 }
 
 
-int lsyslog_nats_task_epoll_event_pipe_fd (
-    struct lsyslog_s * lsyslog,
+int lrsyslog_nats_task_epoll_event_pipe_fd (
+    struct lrsyslog_s * lrsyslog,
     struct epoll_event * event
 )
 {
@@ -114,17 +113,17 @@ int lsyslog_nats_task_epoll_event_pipe_fd (
     int ret = 0;
     int bytes_read = 0;
     int bytes_written = 0;
-    struct lsyslog_pipe_msg_s pipe_msg = {0};
+    struct lrsyslog_pipe_msg_s pipe_msg = {0};
     char nats_msg[4096];
     int nats_msg_len = 0;
 
 
-    bytes_read = read(event->data.fd, &pipe_msg, sizeof(struct lsyslog_pipe_msg_s));
+    bytes_read = read(event->data.fd, &pipe_msg, sizeof(struct lrsyslog_pipe_msg_s));
     if (-1 == bytes_read) {
         syslog(LOG_ERR, "%s:%d:%s: read: %s", __FILE__, __LINE__, __func__, strerror(errno));
         return -1;
     }
-    if (sizeof(struct lsyslog_pipe_msg_s) != bytes_read) {
+    if (sizeof(struct lrsyslog_pipe_msg_s) != bytes_read) {
         syslog(LOG_ERR, "%s:%d:%s: nats closed connection!", __FILE__, __LINE__, __func__);
         return -1;
     }
@@ -140,7 +139,7 @@ int lsyslog_nats_task_epoll_event_pipe_fd (
             pipe_msg.msg_len, pipe_msg.msg
     );
 
-    bytes_written = write(lsyslog->nats_fd, nats_msg, nats_msg_len);
+    bytes_written = write(lrsyslog->nats_fd, nats_msg, nats_msg_len);
     if (-1 == bytes_written) {
         syslog(LOG_ERR, "%s:%d:%s: write: %s", __FILE__, __LINE__, __func__, strerror(errno));
         return -1;
@@ -156,7 +155,7 @@ int lsyslog_nats_task_epoll_event_pipe_fd (
 
     // re-arm pipe fd on epoll
     ret = epoll_ctl(
-        lsyslog->nats_task_epoll_fd,
+        lrsyslog->nats_task_epoll_fd,
         EPOLL_CTL_MOD,
         event->data.fd,
         &(struct epoll_event){
@@ -173,33 +172,33 @@ int lsyslog_nats_task_epoll_event_pipe_fd (
 }
 
 
-static int lsyslog_nats_task_epoll_event_dispatch (
-    struct lsyslog_s * lsyslog,
+static int lrsyslog_nats_task_epoll_event_dispatch (
+    struct lrsyslog_s * lrsyslog,
     struct epoll_event * event
 )
 {
-    if (event->data.fd == lsyslog->nats_fd)
-        return lsyslog_nats_task_epoll_event_nats_fd(lsyslog, event);
+    if (event->data.fd == lrsyslog->nats_fd)
+        return lrsyslog_nats_task_epoll_event_nats_fd(lrsyslog, event);
 
-    if (event->data.fd == lsyslog->pipe_fd[0])
-        return lsyslog_nats_task_epoll_event_pipe_fd(lsyslog, event);
+    if (event->data.fd == lrsyslog->pipe_fd[0])
+        return lrsyslog_nats_task_epoll_event_pipe_fd(lrsyslog, event);
 
     syslog(LOG_WARNING, "%s:%d:%s: No match on epoll event.", __FILE__, __LINE__, __func__);
     return -1;
 }
 
 
-static int lsyslog_nats_task_epoll_handle_events (
-    struct lsyslog_s * lsyslog,
+static int lrsyslog_nats_task_epoll_handle_events (
+    struct lrsyslog_s * lrsyslog,
     struct epoll_event epoll_events[EPOLL_NUM_EVENTS],
     int ep_events_len
 )
 {
     int ret = 0;
     for (int i = 0; i < ep_events_len; i++) {
-        ret = lsyslog_nats_task_epoll_event_dispatch(lsyslog, &epoll_events[i]);
+        ret = lrsyslog_nats_task_epoll_event_dispatch(lrsyslog, &epoll_events[i]);
         if (0 != ret) {
-            syslog(LOG_ERR, "%s:%d:%s: lsyslog_nats_task_epoll_event_dispatch returned %d", __FILE__, __LINE__, __func__, ret);
+            syslog(LOG_ERR, "%s:%d:%s: lrsyslog_nats_task_epoll_event_dispatch returned %d", __FILE__, __LINE__, __func__, ret);
             return ret;
         }
     }
@@ -207,8 +206,8 @@ static int lsyslog_nats_task_epoll_handle_events (
 }
 
 
-int lsyslog_epoll_loop (
-    struct lsyslog_s * lsyslog
+int lrsyslog_epoll_loop (
+    struct lrsyslog_s * lrsyslog
 )
 {
 
@@ -216,11 +215,11 @@ int lsyslog_epoll_loop (
 
     int ep_events_len = 0;
     struct epoll_event ep_events[EPOLL_NUM_EVENTS];
-    for (ep_events_len = epoll_wait(lsyslog->nats_task_epoll_fd, ep_events, EPOLL_NUM_EVENTS, -1);
+    for (ep_events_len = epoll_wait(lrsyslog->nats_task_epoll_fd, ep_events, EPOLL_NUM_EVENTS, -1);
          ep_events_len > 0;
-         ep_events_len = epoll_wait(lsyslog->nats_task_epoll_fd, ep_events, EPOLL_NUM_EVENTS, -1))
+         ep_events_len = epoll_wait(lrsyslog->nats_task_epoll_fd, ep_events, EPOLL_NUM_EVENTS, -1))
     {
-        ret = lsyslog_nats_task_epoll_handle_events(lsyslog, ep_events, ep_events_len);
+        ret = lrsyslog_nats_task_epoll_handle_events(lrsyslog, ep_events, ep_events_len);
         if (-1 == ret) {
             return ret;
         }
@@ -234,8 +233,8 @@ int lsyslog_epoll_loop (
 }
 
 
-int lsyslog_nats_task_connect (
-    struct lsyslog_s * lsyslog
+int lrsyslog_nats_task_connect (
+    struct lrsyslog_s * lrsyslog
 )
 {
 
@@ -260,20 +259,20 @@ int lsyslog_nats_task_connect (
     for (p = servinfo; p != NULL; p = p->ai_next) {
 
         // Create a socket
-        lsyslog->nats_fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
-        if (-1 == lsyslog->nats_fd) {
+        lrsyslog->nats_fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+        if (-1 == lrsyslog->nats_fd) {
             syslog(LOG_WARNING, "%s:%d:%s: socket: %s", __FILE__, __LINE__, __func__, strerror(errno));
             // let's try the next entry...
             continue;
         }
 
         // Bind the socket to the port
-        ret = connect(lsyslog->nats_fd, p->ai_addr, p->ai_addrlen);
+        ret = connect(lrsyslog->nats_fd, p->ai_addr, p->ai_addrlen);
         if (-1 == ret) {
             // Ok, we couldn't connect to this address result - close this
             // socket and try the next hit from getaddrinfo.
             syslog(LOG_WARNING, "%s:%d:%s: connect: %s", __FILE__, __LINE__, __func__, strerror(errno));
-            close(lsyslog->nats_fd);
+            close(lrsyslog->nats_fd);
             continue;
         }
 
@@ -296,13 +295,13 @@ int lsyslog_nats_task_connect (
 
     // Add the fd to epoll
     ret = epoll_ctl(
-        lsyslog->nats_task_epoll_fd,
+        lrsyslog->nats_task_epoll_fd,
         EPOLL_CTL_ADD,
-        lsyslog->nats_fd,
+        lrsyslog->nats_fd,
         &(struct epoll_event){
             .events = EPOLLIN | EPOLLERR | EPOLLHUP | EPOLLONESHOT,
             .data = {
-                .fd = lsyslog->nats_fd
+                .fd = lrsyslog->nats_fd
             }
         }
     );
@@ -315,14 +314,14 @@ int lsyslog_nats_task_connect (
 }
 
 
-static int lsyslog_nats_task_init (
-    struct lsyslog_s * lsyslog
+static int lrsyslog_nats_task_init (
+    struct lrsyslog_s * lrsyslog
 )
 {
 
     int ret = 0;
 
-    ret = nats_parser_init(&lsyslog->nats_parser, lsyslog_nats_task_ping_cb, lsyslog, NULL);
+    ret = nats_parser_init(&lrsyslog->nats_parser, lrsyslog_nats_task_ping_cb, lrsyslog, NULL);
     if (-1 == ret) {
         syslog(LOG_ERR, "%s:%d:%s: nats_parser_init returned -1", __FILE__, __LINE__, __func__);
         return -1;
@@ -332,39 +331,39 @@ static int lsyslog_nats_task_init (
 }
 
 
-void * lsyslog_nats_task (
+void * lrsyslog_nats_task (
     void * arg
 )
 {
 
     int ret = 0;
 
-    struct lsyslog_s * lsyslog = arg;
-    if (NULL == lsyslog) {
-        syslog(LOG_ERR, "%s:%d:%s: lsyslog pointer is NULL", __FILE__, __LINE__, __func__);
+    struct lrsyslog_s * lrsyslog = arg;
+    if (NULL == lrsyslog) {
+        syslog(LOG_ERR, "%s:%d:%s: lrsyslog pointer is NULL", __FILE__, __LINE__, __func__);
         return (void*)-1;
     }
-    if (8090 != lsyslog->sentinel) {
+    if (8090 != lrsyslog->sentinel) {
         syslog(LOG_ERR, "%s:%d:%s: sentinel is wrong!", __FILE__, __LINE__, __func__);
         exit(EXIT_FAILURE);
     }
 
-    ret = lsyslog_nats_task_init(lsyslog);
+    ret = lrsyslog_nats_task_init(lrsyslog);
     if (-1 == ret) {
-        syslog(LOG_ERR, "%s:%d:%s: lsyslog_nats_task_init returned -1", __FILE__, __LINE__, __func__);
+        syslog(LOG_ERR, "%s:%d:%s: lrsyslog_nats_task_init returned -1", __FILE__, __LINE__, __func__);
         return (void*)-1;
     }
 
 
-    ret = lsyslog_nats_task_connect(lsyslog);
+    ret = lrsyslog_nats_task_connect(lrsyslog);
     if (-1 == ret) {
-        syslog(LOG_ERR, "%s:%d:%s: lsyslog_nats_task_connect returned %d", __FILE__, __LINE__, __func__, ret);
+        syslog(LOG_ERR, "%s:%d:%s: lrsyslog_nats_task_connect returned %d", __FILE__, __LINE__, __func__, ret);
         exit(EXIT_FAILURE);
     }
 
-    ret = lsyslog_epoll_loop(lsyslog);
+    ret = lrsyslog_epoll_loop(lrsyslog);
     if (-1 == ret) {
-        syslog(LOG_ERR, "%s:%d:%s: lsyslog_epoll_loop returned %d", __FILE__, __LINE__, __func__, ret);
+        syslog(LOG_ERR, "%s:%d:%s: lrsyslog_epoll_loop returned %d", __FILE__, __LINE__, __func__, ret);
         exit(EXIT_FAILURE);
     }
 

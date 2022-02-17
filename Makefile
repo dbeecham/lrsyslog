@@ -1,33 +1,70 @@
-#######################
-# USING THIS MAKEFILE #
-#######################
-# 
-# * set default target
-# * set test_driver target
-# * set install target
-# * set clean target
-
-
+# include .config configuration (kconfig); no error if file does not exist.
+-include .config
 #########################################
 # VARIABLES - overridable by make flags #
 #########################################
-# {{{
-
-# Stuff to set in CFLAGS:
-#   -march=native
-#       speed! Don't use for cross compilation.
-#   -fpie -Wl,-pie
-#       don't use along with -fPIE and -shared for shared libraries
-CFLAGS         = -Iinclude -Iinc -Isrc -Wall -Wextra -Wno-unused-variable \
-                 -Wno-implicit-fallthrough -Wno-unused-const-variable \
-                 -std=c11 -O0 -g3 -D_FORTIFY_SOURCE=2 -fexceptions \
-                 -fasynchronous-unwind-tables -fpie -Wl,-pie \
-                 -fstack-protector-strong -grecord-gcc-switches \
-                 -Werror=format-security -Wno-unused-parameter \
-                 -Werror=implicit-function-declaration -Wl,-z,defs -Wl,-z,now \
-                 -Wl,-z,relro -pthread $(EXTRA_CFLAGS)
-LDFLAGS        = -O0 -g3 $(EXTRA_LDFLAGS)
-LDLIBS         = -pthread $(EXTRA_LDLIBS)
+# Some useful CFLAGS/LDFLAGS:
+#  -march=native - optimize for *my architecture*
+#  -D_FORTIFY_SOURCE=2 - enable run-time buffer overflow detection
+#  -fasynchronous-unwind-tables - increased reliability of backtraces (i dont think this is useful for C)
+#  -fexceptions - table-based thread cancellation (i dont think this is useful for C)
+#  -fpie -Wl,-pie - full ASLR (address space layout randomization)
+#  -fpic -shared - no text relocations for shared libraries
+#  -fsanitize=signed-integer-overflow - abort on signed integer overflow
+#  -finstrument-functions - adds calls to user-supplied profiling functions at entry- and exit-points
+#  -Wfloat-equal - warning on equality-checking floats
+#  -Wundef - warn if uninitialized identifiers are used in #if
+#  -Wshadow - warn when a variable is shadowed
+#  -Wpointer-arith - warn if something depends on the size of a function or void*
+#  -Wcast-align - warn when a pointer is cast such that an alignment of the target is increased
+#  -Wstrict-prototypes - warn when a function is declared without types
+#  -Wstrict-overflow=5 - warns about cases where compiler optimizes based on the assumtion that a signed overflow does not occur
+#  -Wwrite-strings - give string constants the type const char[len] so that copying the address of one into a non-const char* pointer gets a warning
+#  -Wswitch-default - warn when a switch does not have a default case
+#  -Wswitch-enum - warn when a switch lacks a case for an enum case
+#  -Wconversion - warn for implicit conversations that may alter a value
+#  -Wunreachable-code - warn for unreachable code
+#  -Wformat=2 - printf format warnings
+#  -fplugin=annobin - generate data for hardining 
+#  -fstack-clash-protection - increased reliability of stack overflow detection
+#  -fstack-protector  - stack smashing protection
+#  -fstack-protector-all  - stack smashing protection
+#  -fstack-protector-strong  - stack smashing protection
+#  -grecord-gcc-switches - store compiler flags in debugging info
+#  -mcet -fcf-protection - control flow integrity protection
+#  -Werror=format-security - reject potentially unsafe format string arguments
+#  -Wl,-z,defs - detect and reject underlinking
+#  -Wl,-z,now - disable lazy binding
+#  -Wl,-z,relro - read-only segments after relocation
+#  -Wdouble-promition - very useful in embedded spaces to make sure you're using the correct float type
+#  -fno-common - guards against clashing global names that can cause issues
+#  -fstack-usage - makes compiler emit a .su file with stack usage info
+#  -Wstack-usage=<stack_limit> - limit stack usage to <stack_limit> bytes
+#  -save-temps - makes compiler leave behind the results from preprocessor and assembly
+#  -fsanitize=address - address sanitizer, detects out-of-bounds access to
+#      heap/stack/globals, use-after-free, use-after-return, use-after-scope,
+#      double-free, invalid free, and memory leaks
+#  
+# However, note that
+#  -fsanitize=address (address sanitizer, was previously named -fmudflap) disable ABI
+#     compatibility with future library versions, so for long-term use across multiple OSs, this
+#     can have unforseen consequences
+# -O0 may improve debugging experience, but disables any hardening that depend on optimizations.
+CFLAGS         = 
+cflags-y       = $(CFLAGS) $(EXTRA_CFLAGS)
+cflags-y      += -Isrc
+cflags-y      += -std=c11 -Wall -Wextra -Wno-implicit-fallthrough -Wno-unused-const-variable
+cflags-y      += -Werror=format-security -Werror=implicit-function-declaration 
+cflags-y      += -Wshadow -Wdouble-promotion -Wformat=2 -Wformat-truncation -Wvla 
+cflags-y      += -Wno-unused-parameter -Wno-unused-function
+cflags-y      +=-fno-common
+cflags-y      += -pipe
+LDFLAGS        = 
+ldflags-y      = $(LDFLAGS) $(EXTRA_LDFLAGS)
+ldflags-y     += -fno-common
+LDLIBS         = 
+ldlibs-y       = $(LDLIBS) $(EXTRA_LDLIBS)
+ldlibs-y      += -pthread
 DESTDIR        = /
 PREFIX         = /usr/local
 RAGEL          = ragel
@@ -39,13 +76,105 @@ CFLOW          = cflow
 SED            = sed
 NEATO          = neato
 CTAGS          = ctags
+UPX            = upx
+STRIP          = strip
 SCAN_BUILD     = scan-build
+KCONFIG_MCONF  = kconfig-mconf
+KCONFIG_NCONF  = kconfig-nconf
+KCONFIG_CONF   = kconfig-conf
 Q              = @
 CC_COLOR       = \033[0;34m
 LD_COLOR       = \033[0;33m
 TEST_COLOR     = \033[0;35m
 INSTALL_COLOR  = \033[0;32m
 NO_COLOR       = \033[m
+
+
+# position independent code (address space layout randomization)
+cflags-$(CONFIG_PIE) += -pie -fpie -Wl,-pie 
+ldflags-$(CONFIG_PIE) += -pie -fpie -Wl,-pie
+
+cflags-$(CONFIG_STATIC) += -static
+ldflags-$(CONFIG_STATIC) += -static
+
+# runtime buffer overflow detection
+cflags-$(CONFIG_RBUD) += -D_FORTIFY_SOURCE=2
+
+# detect and reject underlinking
+cflags-$(CONFIG_DETECT_UNDERLINKING) += -Wl,-z,defs
+ldflags-$(CONFIG_DETECT_UNDERLINKING) += -Wl,-z,defs
+
+# disable lazy binding
+cflags-$(CONFIG_DISABLE_LAZY_BINDING) += -Wl,-z,now
+ldflags-$(CONFIG_DISABLE_LAZY_BINDING) += -Wl,-z,now
+
+# read-only segments after relocation
+cflags-$(CONFIG_RELRO) += -Wl,-z,relro
+ldflags-$(CONFIG_RELRO) += -Wl,-z,relro
+
+# increased reliability of stack overflow detection
+cflags-$(CONFIG_STACK_CLASH_PROTECTION) += -fstack-clash-protection
+ldflags-$(CONFIG_STACK_CLASH_PROTECTION) += -fstack-clash-protection
+
+# stack smashing protection levels
+cflags-$(CONFIG_STACK_PROTECTOR) += -fstack-protector
+ldflags-$(CONFIG_STACK_PROTECTOR) += -fstack-protector
+cflags-$(CONFIG_STACK_PROTECTOR_ALL) += -fstack-protector-all
+ldflags-$(CONFIG_STACK_PROTECTOR_ALL) += -fstack-protector-all
+cflags-$(CONFIG_STACK_PROTECTOR_STRONG) += -fstack-protector-strong
+ldflags-$(CONFIG_STACK_PROTECTOR_STRONG) += -fstack-protector-strong
+
+# AddressSanitizer
+cflags-$(CONFIG_ASAN) += -fsanitize=address
+ldflags-$(CONFIG_ASAN) += -fsanitize=address
+ldlibs-$(CONFIG_ASAN) += -lasan
+
+# UndefinedBehaviourSanitizer
+cflags-$(CONFIG_UBSAN) += -fsanitize=undefined
+ldflags-$(CONFIG_UBSAN) += -fsanitize=undefined
+
+# build with debug info
+cflags-$(CONFIG_OPTIMIZE_DEBUG) += -O0 -g3
+ldflags-$(CONFIG_OPTIMIZE_DEBUG) += -O0 -g3
+
+# build optimize for smallness
+cflags-$(CONFIG_OPTIMIZE_SMALL) += -Os
+ldflags-$(CONFIG_OPTIMIZE_SMALL) += -Os
+
+# -march=native
+cflags-$(CONFIG_MARCH_NATIVE) += -march=native
+ldflags-$(CONFIG_MARCH_NATIVE) += -march=native
+
+# build with debug outputs
+cflags-$(CONFIG_DEBUG) += -DDEBUG
+
+ifdef CONFIG_NATS_HOST
+cflags-y += -DCONFIG_NATS_HOST='$(CONFIG_NATS_HOST)' 
+endif
+
+ifdef CONFIG_NATS_PORT
+cflags-y += -DCONFIG_NATS_PORT='$(CONFIG_NATS_PORT)'
+endif
+
+ifdef CONFIG_HOST
+cflags-y += -DCONFIG_HOST='$(CONFIG_HOST)' 
+endif
+
+ifdef CONFIG_PORT
+cflags-y += -DCONFIG_PORT='$(CONFIG_PORT)'
+endif
+
+ifdef CONFIG_MAX_CLIENTS
+cflags-y += -DCONFIG_MAX_CLIENTS='$(CONFIG_MAX_CLIENTS)'
+endif
+
+ifdef CONFIG_NUM_THREADS
+cflags-y += -DCONFIG_NUM_THREADS='$(CONFIG_NUM_THREADS)'
+endif
+
+ifdef CONFIG_SYSLOG_IDENT
+cflags-y += -DCONFIG_SYSLOG_IDENT='$(CONFIG_SYSLOG_IDENT)'
+endif
 
 # }}}
 
@@ -57,9 +186,9 @@ NO_COLOR       = \033[m
 
 default: all
 
-all: lsyslog
+all: lrsyslog
 
-lsyslog: lsyslog.o lsyslog_tcp_task.o lsyslog_nats_task.o lsyslog_client_parser.o nats_parser.o gwy01_parser.o
+lrsyslog: lrsyslog.o lrsyslog_tcp_task.o lrsyslog_nats_task.o lrsyslog_client_parser.o nats_parser.o
 
 # }}}
 
@@ -97,6 +226,36 @@ tags: | cscope.files
 scan-build:
 	$(SCAN_BUILD) $(MAKE) -B all
 
+nconfig:
+	$(Q)$(KCONFIG_NCONF) Kconfig
+
+silentoldconfig:
+	$(Q)$(KCONFIG_CONF) --silentoldconfig Kconfig
+
+oldconfig:
+	$(Q)$(KCONFIG_CONF) --oldconfig Kconfig
+
+menuconfig:
+	$(Q)$(KCONFIG_MCONF) Kconfig
+
+config:
+	$(Q)$(KCONFIG_CONF) Kconfig
+
+allnoconfig:
+	$(Q)$(KCONFIG_CONF) --allnoconfig Kconfig
+
+allyesconfig:
+	$(Q)$(KCONFIG_CONF) --allyesconfig Kconfig
+
+savedefconfig:
+	$(Q)$(KCONFIG_CONF) --savedefconfig=defconfig Kconfig
+
+%_defconfig:
+	$(Q)$(KCONFIG_CONF) --defconfig=configs/$@ Kconfig
+
+defconfig:
+	$(Q)$(KCONFIG_CONF) --defconfig=configs/defconfig Kconfig
+
 # }}}
 
 
@@ -119,8 +278,8 @@ scan-build:
 # won't be *as much* of an issue - at least the target binary will not be
 # linked with the '--coverage' flag, and it won't generate gcov files when
 # executed.
-test: CFLAGS += -I./vendor/munit/ -fprofile-arcs -ftest-coverage
-test: LDLIBS += -lgcov --coverage
+test: cflags-y += -fprofile-arcs -ftest-coverage
+test: ldlibs-y += -lgcov --coverage
 test: test_driver
 	@printf "$(TEST_COLOR)TEST$(NO_COLOR) $@\n"
 	$(Q)./test_driver
@@ -136,7 +295,7 @@ check:
 
 
 test_driver: CFLAGS += -Ivendor/munit/
-test_driver: test_driver.o lsyslog_client_parser.o
+test_driver: test_driver.o lrsyslog_client_parser.o
 
 # }}}
 
@@ -146,14 +305,8 @@ test_driver: test_driver.o lsyslog_client_parser.o
 ###################
 # {{{
 #
-# Examples:
-#
-#   install: $(DESTDIR)$(PREFIX)/lib/libgwy.so $(DESTDIR)$(PREFIX)/include/libgwy.h
-#
-#   install: $(DESTDIR)/bin/cnatsd
-#
 
-install: $(DESTDIR)$(PREFIX)/bin/lsyslog
+install: $(DESTDIR)$(PREFIX)/bin/lrsyslog
 
 # }}}
 
@@ -164,10 +317,10 @@ install: $(DESTDIR)$(PREFIX)/bin/lsyslog
 # {{{
 
 clean:
-	rm -f *.o test_driver *.gcda *.gcno *.gcov *.cflow *deps lsyslog_client_parser.c
+	rm -f *.o test_driver *.gcda *.gcno *.gcov *.cflow *deps lrsyslog_client_parser.c
 
 distclean: clean
-	rm -f *.so lsyslog
+	rm -f *.so lrsyslog
 
 # }}}
 
@@ -242,24 +395,24 @@ $(DESTDIR)$(PREFIX)/bin/%: % | $(DESTDIR)$(PREFIX)/bin
 
 %.deps: %
 	@printf "$(CC_COLOR)CC$(NO_COLOR) $@\n"
-	$(Q)$(CC) -c $(CFLAGS) $(CPPFLAGS) -M $^ | $(SED) -e 's/[\\ ]/\n/g' | $(SED) -e '/^$$/d' -e '/\.o:[ \t]*$$/d' | sort | uniq > $@
+	$(Q)$(CC) -c $(cflags-y) $(CPPFLAGS) -M $^ | $(SED) -e 's/[\\ ]/\n/g' | $(SED) -e '/^$$/d' -e '/\.o:[ \t]*$$/d' | sort | uniq > $@
 
 %: %.o
 	@printf "$(LD_COLOR)LD$(NO_COLOR) $@\n"
-	$(Q)$(CC) $(LDFLAGS) -o $@ $^ $(LOADLIBES) $(LDLIBS)
+	$(Q)$(CROSS_COMPILE)$(CC) $(ldflags-y) -o $@ $^ $(LOADLIBES) $(ldlibs-y)
 
 %.a:
 	@printf "$(LD_COLOR)LD$(NO_COLOR) $@\n"
 	$(Q)$(AR) rcs $@ $^
 
-%.so: CFLAGS += -fPIC
+%.so: cflags-y += -fPIC
 %.so:
 	@printf "$(LD_COLOR)LD$(NO_COLOR) $@\n"
-	$(Q)$(CC) $(LDFLAGS) -shared -o $@ $^ $(LOADLIBES) $(LDLIBS)
+	$(Q)$(CROSS_COMPILE)$(CC) $(ldflags-y) -shared -o $@ $^ $(LOADLIBES) $(ldlibs-y)
 
 %.o: %.c
 	@printf "$(CC_COLOR)CC$(NO_COLOR) $@\n"
-	$(Q)$(CC) -c $(CFLAGS) $(CPPFLAGS) -o $@ $^
+	$(Q)$(CROSS_COMPILE)$(CC) -c $(cflags-y) $(CPPFLAGS) -o $@ $^
 
 # UPX-minified binaries
 %.upx: %
@@ -275,22 +428,18 @@ $(DESTDIR)$(PREFIX)/bin/%: % | $(DESTDIR)$(PREFIX)/bin
 	@printf "$(CC_COLOR)CC$(NO_COLOR) $@\n"
 	$(Q)$(CFLOW) -o $@ $<
 
-# from dot graphs, neato can generate png files
 %.png: %.dot
 	@printf "$(CC_COLOR)CC$(NO_COLOR) $@\n"
 	$(Q)$(NEATO) -Tpng -Ln100 -o $@ $<
 
-# ragel can generate dot graphs
 %.dot: %.rl
 	@printf "$(CC_COLOR)CC$(NO_COLOR) $@\n"
 	$(Q)$(RAGEL) $(RAGELFLAGS) -V -p $< -o $@
 
-# ragel compiles c.rl files to .c files
 %.c: %.c.rl
 	@printf "$(CC_COLOR)CC$(NO_COLOR) $@\n"
 	$(Q)$(RAGEL) -Iinclude $(RAGELFLAGS) -o $@ $<
 
-# untangle .rst files into c files
 %.c: %.c.rst
 	@printf "$(CC_COLOR)CC$(NO_COLOR) $@\n"
 	$(Q)cat $< | rst_tangle > $@
@@ -298,8 +447,9 @@ $(DESTDIR)$(PREFIX)/bin/%: % | $(DESTDIR)$(PREFIX)/bin
 # build c files from markdown files - literate programming style
 %.c: %.c.md
 	@printf "$(CC_COLOR)CC$(NO_COLOR) $@\n"
-	$(Q)cat $< | $(SED) -n '/^```c/,/^```/ p' | $(SED) '/^```/ d' > $@
+	$(Q)cat $< | sed -n '/^```c/,/^```/ p' | sed '/^```/ d' > $@
 
 # }}}
+
 
 #vim: set foldmethod=marker

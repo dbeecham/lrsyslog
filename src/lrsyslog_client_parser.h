@@ -2,7 +2,7 @@
 
 #include <stdint.h>
 
-struct lsyslog_syslog_s {
+struct lrsyslog_syslog_s {
     int cs;
     int fd;
     int prival;
@@ -35,8 +35,8 @@ struct lsyslog_syslog_s {
     int pid;
 };
 
-int lsyslog_client_parser_init (
-    struct lsyslog_syslog_s * log,
+int lrsyslog_client_parser_init (
+    struct lrsyslog_syslog_s * log,
     int (*log_cb)(
         const char * host,
         const uint32_t host_len,
@@ -52,8 +52,8 @@ int lsyslog_client_parser_init (
     void * user_data
 );
 
-int lsyslog_client_parser_parse (
-    struct lsyslog_syslog_s * log,
+int lrsyslog_client_parser_parse (
+    struct lrsyslog_syslog_s * log,
     const char * const buf,
     const int buf_len
 );
