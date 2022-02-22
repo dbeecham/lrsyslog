@@ -23,12 +23,13 @@
 #include "nats_parser.h"
 
 
-int lrsyslog_nats_task_ping_cb (
+int lrsyslog_nats_ping_cb (
     struct nats_parser_s * parser,
     void * context,
     void * arg
 )
 {
+    struct io_uring_sqe * sqe;
     int bytes_written = 0;
 
     struct lrsyslog_s * lrsyslog = context;
@@ -37,19 +38,21 @@ int lrsyslog_nats_task_ping_cb (
         return -1;
     }
 
-    bytes_written = write(lrsyslog->nats_fd, "PONG\r\n", 6);
-    if (-1 == bytes_written) {
-        syslog(LOG_ERR, "%s:%d:%s: write: %s", __FILE__, __LINE__, __func__, strerror(errno));
+    // write a PONG to NATS
+    sqe = io_uring_get_sqe(&lrsyslog->ring);
+    if (NULL == sqe) {
+        syslog(LOG_ERR, "%s:%d:%s: io_uring_get_sqe returned NULL", __FILE__, __LINE__, __func__);
         return -1;
     }
-    if (0 == bytes_written) {
-        syslog(LOG_ERR, "%s:%d:%s: wrote 0 bytes! connection dead?", __FILE__, __LINE__, __func__);
-        return -1;
-    }
-    if (6 != bytes_written) {
-        syslog(LOG_ERR, "%s:%d:%s: partial write of %d bytes!", __FILE__, __LINE__, __func__, bytes_written);
-        return -1;
-    }
+    io_uring_prep_write(
+        /* sqe = */ sqe,
+        /* fd = */ lrsyslog->nats.fd,
+        /* buf = */ "PONG\r\n",
+        /* buf_len = */ strlen("PONG\r\n"),
+        /* flags = */ 0
+    );
+    io_uring_sqe_set_data(sqe, 0);
+    io_uring_submit(&lrsyslog->ring);
 
     return 0;
     (void)parser;
@@ -57,187 +60,52 @@ int lrsyslog_nats_task_ping_cb (
 }
 
 
-int lrsyslog_nats_task_epoll_event_nats_fd (
+int lrsyslog_uring_event_nats_fd (
     struct lrsyslog_s * lrsyslog,
-    struct epoll_event * event
+    struct io_uring_cqe * cqe
 )
 {
-
+    struct io_uring_sqe * sqe;
     int ret = 0;
-    int bytes_read = 0;
-    char buf[NATS_BUF_LEN];
 
-
-    bytes_read = read(event->data.fd, buf, NATS_BUF_LEN);
-    if (-1 == bytes_read) {
-        syslog(LOG_ERR, "%s:%d:%s: read: %s", __FILE__, __LINE__, __func__, strerror(errno));
+    if (cqe->res < 0) {
+        syslog(LOG_ERR, "%s:%d:%s: read: %s", __FILE__, __LINE__, __func__, strerror(-cqe->res));
         return -1;
     }
-    if (0 == bytes_read) {
-        syslog(LOG_ERR, "%s:%d:%s: nats closed connection!", __FILE__, __LINE__, __func__);
+    if (0 == cqe->res) {
+        syslog(LOG_ERR, "%s:%d:%s: nats connection closed", __FILE__, __LINE__, __func__);
         return -1;
     }
 
     // Parse the NATS data; one of the callbacks (named *_cb) will be called on
     // a successful parse.
-    ret = nats_parser_parse(&lrsyslog->nats_parser, buf, bytes_read);
+    ret = nats_parser_parse(&lrsyslog->nats.parser, lrsyslog->nats.buf, cqe->res);
     if (-1 == ret) {
         syslog(LOG_ERR, "%s:%d:%s: nats_parser_parse returned %d", __FILE__, __LINE__, __func__, ret);
         return -1;
     }
 
-    ret = epoll_ctl(
-        lrsyslog->nats_task_epoll_fd,
-        EPOLL_CTL_MOD,
-        event->data.fd,
-        &(struct epoll_event){
-            .events = EPOLLIN | EPOLLERR | EPOLLHUP | EPOLLONESHOT,
-            .data = event->data
-        }
-    );
-    if (-1 == ret) {
-        syslog(LOG_ERR, "%s:%d:%s: epoll_ctl: %s", __FILE__, __LINE__, __func__, strerror(errno));
+    // add a new read request on nats
+    sqe = io_uring_get_sqe(&lrsyslog->ring);
+    if (NULL == sqe) {
+        syslog(LOG_ERR, "%s:%d:%s: io_uring_get_sqe returned NULL", __FILE__, __LINE__, __func__);
         return -1;
     }
+    io_uring_prep_read(sqe, lrsyslog->nats.fd, lrsyslog->nats.buf, 4096, 0);
+    io_uring_sqe_set_data(sqe, &lrsyslog->nats.fd);
+
+    // mark this event as seen
+    io_uring_cqe_seen(&lrsyslog->ring, cqe);
 
     return 0;
 }
 
 
-int lrsyslog_nats_task_epoll_event_pipe_fd (
-    struct lrsyslog_s * lrsyslog,
-    struct epoll_event * event
-)
-{
-
-    int ret = 0;
-    int bytes_read = 0;
-    int bytes_written = 0;
-    struct lrsyslog_pipe_msg_s pipe_msg = {0};
-    char nats_msg[4096];
-    int nats_msg_len = 0;
-
-
-    bytes_read = read(event->data.fd, &pipe_msg, sizeof(struct lrsyslog_pipe_msg_s));
-    if (-1 == bytes_read) {
-        syslog(LOG_ERR, "%s:%d:%s: read: %s", __FILE__, __LINE__, __func__, strerror(errno));
-        return -1;
-    }
-    if (sizeof(struct lrsyslog_pipe_msg_s) != bytes_read) {
-        syslog(LOG_ERR, "%s:%d:%s: nats closed connection!", __FILE__, __LINE__, __func__);
-        return -1;
-    }
-
-    if (pipe_msg.topic_len <= 0) {
-        syslog(LOG_ERR, "%s:%d:%s: non-positive topic length", __FILE__, __LINE__, __func__);
-        return -1;
-    }
-
-    nats_msg_len = snprintf(nats_msg, 4096, "PUB %.*s %d\r\n%.*s\r\n",
-            pipe_msg.topic_len, pipe_msg.topic,
-            pipe_msg.msg_len,
-            pipe_msg.msg_len, pipe_msg.msg
-    );
-
-    bytes_written = write(lrsyslog->nats_fd, nats_msg, nats_msg_len);
-    if (-1 == bytes_written) {
-        syslog(LOG_ERR, "%s:%d:%s: write: %s", __FILE__, __LINE__, __func__, strerror(errno));
-        return -1;
-    }
-    if (0 == bytes_written) {
-        syslog(LOG_ERR, "%s:%d:%s: wrote 0 bytes!", __FILE__, __LINE__, __func__);
-        return -1;
-    }
-    if (bytes_written != nats_msg_len) {
-        syslog(LOG_ERR, "%s:%d:%s: partial write of %d bytes", __FILE__, __LINE__, __func__, bytes_written);
-        return -1;
-    }
-
-    // re-arm pipe fd on epoll
-    ret = epoll_ctl(
-        lrsyslog->nats_task_epoll_fd,
-        EPOLL_CTL_MOD,
-        event->data.fd,
-        &(struct epoll_event){
-            .events = EPOLLIN | EPOLLERR | EPOLLHUP | EPOLLONESHOT,
-            .data = event->data
-        }
-    );
-    if (-1 == ret) {
-        syslog(LOG_ERR, "%s:%d:%s: epoll_ctl: %s", __FILE__, __LINE__, __func__, strerror(errno));
-        return -1;
-    }
-
-    return 0;
-}
-
-
-static int lrsyslog_nats_task_epoll_event_dispatch (
-    struct lrsyslog_s * lrsyslog,
-    struct epoll_event * event
-)
-{
-    if (event->data.fd == lrsyslog->nats_fd)
-        return lrsyslog_nats_task_epoll_event_nats_fd(lrsyslog, event);
-
-    if (event->data.fd == lrsyslog->pipe_fd[0])
-        return lrsyslog_nats_task_epoll_event_pipe_fd(lrsyslog, event);
-
-    syslog(LOG_WARNING, "%s:%d:%s: No match on epoll event.", __FILE__, __LINE__, __func__);
-    return -1;
-}
-
-
-static int lrsyslog_nats_task_epoll_handle_events (
-    struct lrsyslog_s * lrsyslog,
-    struct epoll_event epoll_events[EPOLL_NUM_EVENTS],
-    int ep_events_len
-)
-{
-    int ret = 0;
-    for (int i = 0; i < ep_events_len; i++) {
-        ret = lrsyslog_nats_task_epoll_event_dispatch(lrsyslog, &epoll_events[i]);
-        if (0 != ret) {
-            syslog(LOG_ERR, "%s:%d:%s: lrsyslog_nats_task_epoll_event_dispatch returned %d", __FILE__, __LINE__, __func__, ret);
-            return ret;
-        }
-    }
-    return 0;
-}
-
-
-int lrsyslog_epoll_loop (
+int lrsyslog_nats_connect (
     struct lrsyslog_s * lrsyslog
 )
 {
-
-    int ret = 0;
-
-    int ep_events_len = 0;
-    struct epoll_event ep_events[EPOLL_NUM_EVENTS];
-    for (ep_events_len = epoll_wait(lrsyslog->nats_task_epoll_fd, ep_events, EPOLL_NUM_EVENTS, -1);
-         ep_events_len > 0;
-         ep_events_len = epoll_wait(lrsyslog->nats_task_epoll_fd, ep_events, EPOLL_NUM_EVENTS, -1))
-    {
-        ret = lrsyslog_nats_task_epoll_handle_events(lrsyslog, ep_events, ep_events_len);
-        if (-1 == ret) {
-            return ret;
-        }
-    }
-    if (-1 == ep_events_len) {
-        syslog(LOG_ERR, "%s:%d:%s: epoll_wait: %s", __FILE__, __LINE__, __func__, strerror(errno));
-        exit(EXIT_FAILURE);
-    }
-
-    return 0;
-}
-
-
-int lrsyslog_nats_task_connect (
-    struct lrsyslog_s * lrsyslog
-)
-{
-
+    struct io_uring_sqe * sqe;
     int ret = 0;
     struct addrinfo *servinfo, *p;
 
@@ -259,20 +127,20 @@ int lrsyslog_nats_task_connect (
     for (p = servinfo; p != NULL; p = p->ai_next) {
 
         // Create a socket
-        lrsyslog->nats_fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
-        if (-1 == lrsyslog->nats_fd) {
+        lrsyslog->nats.fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+        if (-1 == lrsyslog->nats.fd) {
             syslog(LOG_WARNING, "%s:%d:%s: socket: %s", __FILE__, __LINE__, __func__, strerror(errno));
             // let's try the next entry...
             continue;
         }
 
         // Bind the socket to the port
-        ret = connect(lrsyslog->nats_fd, p->ai_addr, p->ai_addrlen);
+        ret = connect(lrsyslog->nats.fd, p->ai_addr, p->ai_addrlen);
         if (-1 == ret) {
             // Ok, we couldn't connect to this address result - close this
             // socket and try the next hit from getaddrinfo.
             syslog(LOG_WARNING, "%s:%d:%s: connect: %s", __FILE__, __LINE__, __func__, strerror(errno));
-            close(lrsyslog->nats_fd);
+            close(lrsyslog->nats.fd);
             continue;
         }
 
@@ -293,89 +161,14 @@ int lrsyslog_nats_task_connect (
         return -1;
     }
 
-    // Add the fd to epoll
-    ret = epoll_ctl(
-        lrsyslog->nats_task_epoll_fd,
-        EPOLL_CTL_ADD,
-        lrsyslog->nats_fd,
-        &(struct epoll_event){
-            .events = EPOLLIN | EPOLLERR | EPOLLHUP | EPOLLONESHOT,
-            .data = {
-                .fd = lrsyslog->nats_fd
-            }
-        }
-    );
-    if (-1 == ret) {
-        syslog(LOG_ERR, "%s:%d:%s: epoll_ctl: %s", __FILE__, __LINE__, __func__, strerror(errno));
+    // read some data from nats
+    sqe = io_uring_get_sqe(&lrsyslog->ring);
+    if (NULL == sqe) {
+        syslog(LOG_ERR, "%s:%d:%s: io_uring_get_sqe returned NULL", __FILE__, __LINE__, __func__);
         return -1;
     }
-
-    return 0;
-}
-
-
-static int lrsyslog_nats_task_init (
-    struct lrsyslog_s * lrsyslog
-)
-{
-
-    int ret = 0;
-
-    ret = nats_parser_init(&lrsyslog->nats_parser, lrsyslog_nats_task_ping_cb, lrsyslog, NULL);
-    if (-1 == ret) {
-        syslog(LOG_ERR, "%s:%d:%s: nats_parser_init returned -1", __FILE__, __LINE__, __func__);
-        return -1;
-    }
-
-    return 0;
-}
-
-
-void * lrsyslog_nats_task (
-    void * arg
-)
-{
-
-    int ret = 0;
-
-    struct lrsyslog_s * lrsyslog = arg;
-    if (NULL == lrsyslog) {
-        syslog(LOG_ERR, "%s:%d:%s: lrsyslog pointer is NULL", __FILE__, __LINE__, __func__);
-        return (void*)-1;
-    }
-    if (8090 != lrsyslog->sentinel) {
-        syslog(LOG_ERR, "%s:%d:%s: sentinel is wrong!", __FILE__, __LINE__, __func__);
-        exit(EXIT_FAILURE);
-    }
-
-    ret = lrsyslog_nats_task_init(lrsyslog);
-    if (-1 == ret) {
-        syslog(LOG_ERR, "%s:%d:%s: lrsyslog_nats_task_init returned -1", __FILE__, __LINE__, __func__);
-        return (void*)-1;
-    }
-
-
-    ret = lrsyslog_nats_task_connect(lrsyslog);
-    if (-1 == ret) {
-        syslog(LOG_ERR, "%s:%d:%s: lrsyslog_nats_task_connect returned %d", __FILE__, __LINE__, __func__, ret);
-        exit(EXIT_FAILURE);
-    }
-
-    ret = lrsyslog_epoll_loop(lrsyslog);
-    if (-1 == ret) {
-        syslog(LOG_ERR, "%s:%d:%s: lrsyslog_epoll_loop returned %d", __FILE__, __LINE__, __func__, ret);
-        exit(EXIT_FAILURE);
-    }
-
-    // TODO:
-    //  * Connect to NATS
-    //  * Set up a watchdog timer for NATS
-    //  * When connected to NATS, subscribe to some topic
-    //  * epoll_wait
-    //  * if disconnected from NATS, just retry the connection.
-    //  * on PING from nats, PONG back
-    //  * on MSG from nats, send it to the socketpair
-    //  * on msg from socketpair, send it to nats
+    io_uring_prep_read(sqe, lrsyslog->nats.fd, lrsyslog->nats.buf, 4096, 0);
+    io_uring_sqe_set_data(sqe, &lrsyslog->nats.fd);
 
     return 0;
 }

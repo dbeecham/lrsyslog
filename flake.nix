@@ -10,13 +10,16 @@
     };
   };
 
-  outputs = inputs@{ self, nixpkgs, ...}: {
-    defaultPackage.x86_64-linux = inputs.nixpkgs.legacyPackages.x86_64-linux.stdenv.mkDerivation {
+  outputs = { self, nixpkgs, ...}: {
+    defaultPackage.x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.stdenv.mkDerivation {
       name = "lrsyslog";
       src = ./.;
       depsBuildBuild = [
-        inputs.nixpkgs.legacyPackages.x86_64-linux.ragel 
-        inputs.nixpkgs.legacyPackages.x86_64-linux.kconfig-frontends 
+        nixpkgs.legacyPackages.x86_64-linux.ragel 
+        nixpkgs.legacyPackages.x86_64-linux.kconfig-frontends 
+      ];
+      buildInputs = [
+        nixpkgs.legacyPackages.x86_64-linux.liburing 
       ];
     };
   };

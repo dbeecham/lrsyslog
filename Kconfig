@@ -8,7 +8,7 @@ menu "Useful compile-time flags"
         config OPTIMIZE_SMALL
             bool "Small (-Os)"
         config OPTIMIZE_DEBUG
-            bool "Debug (-Og -g3)"
+            bool "Debug (-O0 -g3)"
         config OPTIMIZE_DEFAULT
             bool "Default"
     endchoice
@@ -126,8 +126,8 @@ menu "syslog host/port"
         default "0.0.0.0"
 
     config PORT
-        string "syslog listen port"
-        default "514"
+        int "syslog listen port"
+        default 514
 endmenu
 
 config MAX_CLIENTS

@@ -64,7 +64,7 @@ ldflags-y      = $(LDFLAGS) $(EXTRA_LDFLAGS)
 ldflags-y     += -fno-common
 LDLIBS         = 
 ldlibs-y       = $(LDLIBS) $(EXTRA_LDLIBS)
-ldlibs-y      += -pthread
+ldlibs-y      += -luring
 DESTDIR        = /
 PREFIX         = /usr/local
 RAGEL          = ragel
@@ -188,7 +188,8 @@ default: all
 
 all: lrsyslog
 
-lrsyslog: lrsyslog.o lrsyslog_tcp_task.o lrsyslog_nats_task.o lrsyslog_client_parser.o nats_parser.o
+lrsyslog: lrsyslog.o lrsyslog_tcp_task.o lrsyslog_nats_task.o lrsyslog_client_parser.o \
+		  nats_parser.o lrsyslog_args_parser.o
 
 # }}}
 
