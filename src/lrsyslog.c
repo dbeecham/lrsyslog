@@ -21,9 +21,10 @@
 #include <liburing.h>
 
 #include "lrsyslog.h"
-#include "lrsyslog_tcp_task.h"
-#include "lrsyslog_nats_task.h"
+#include "lrsyslog_tcp.h"
+#include "lrsyslog_nats.h"
 #include "lrsyslog_args_parser.h"
+#include "lrsyslog_nats_parser.h"
 
 
 #define EPOLL_NUM_EVENTS 8
@@ -42,29 +43,34 @@ int lrsyslog_init (
     }
 
     // Main thread needs a filled sigset on a signalfd to react to signals
-    sigset_t sigset = {0};
-    ret = sigfillset(&sigset);
+    ret = sigemptyset(&lrsyslog->sigset);
+    if (-1 == ret) {
+        syslog(LOG_ERR, "%s:%d:%s: sigemptyset: %s", __FILE__, __LINE__, __func__, strerror(errno));
+        return -1;
+    }
+    
+    ret = sigfillset(&lrsyslog->sigset);
     if (-1 == ret) {
         syslog(LOG_ERR, "%s:%d:%s: sigfillset: %s", __FILE__, __LINE__, __func__, strerror(errno));
         return -1;
     }
 
     // Create the signalfd
-//    lrsyslog->signal_fd = signalfd(
-//        /* fd = */ -1,
-//        /* &sigset = */ &sigset,
-//        /* flags = */ SFD_NONBLOCK | SFD_CLOEXEC
-//    );
-//    if (-1 == lrsyslog->signal_fd) {
-//        syslog(LOG_ERR, "%s:%d:%s: signalfd: %s", __FILE__, __LINE__, __func__, strerror(errno));
-//        return -1;
-//    }
+    lrsyslog->signalfd = signalfd(
+        /* fd = */ -1,
+        /* &sigset = */ &lrsyslog->sigset,
+        /* flags = */ SFD_NONBLOCK | SFD_CLOEXEC
+    );
+    if (-1 == lrsyslog->signalfd) {
+        syslog(LOG_ERR, "%s:%d:%s: signalfd: %s", __FILE__, __LINE__, __func__, strerror(errno));
+        return -1;
+    }
 
 
     // Block the signals
 //    ret = sigprocmask(
 //            /* how = */ SIG_BLOCK,
-//            /* &sigset = */ &sigset,
+//            /* &sigset = */ &lrsyslog->sigset,
 //            /* &oldset = */ NULL
 //    );
 //    if (-1 == ret) {
@@ -74,14 +80,14 @@ int lrsyslog_init (
 
 
     // initialize the nats parser
-    ret = nats_parser_init(
+    ret = lrsyslog_nats_parser_init(
         &lrsyslog->nats.parser,
         lrsyslog_nats_ping_cb,
         lrsyslog,
         NULL
     );
     if (-1 == ret) {
-        syslog(LOG_ERR, "%s:%d:%s: nats_parser_init returned -1", __FILE__, __LINE__, __func__);
+        syslog(LOG_ERR, "%s:%d:%s: lrsyslog_nats_parser_init returned -1", __FILE__, __LINE__, __func__);
         return -1;
     }
 
@@ -120,8 +126,8 @@ static int lrsyslog_tcp_server_start (
     for (p = servinfo; p != NULL; p = p->ai_next) {
 
         // Create a socket
-        lrsyslog->tcp_fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
-        if (-1 == lrsyslog->tcp_fd) {
+        lrsyslog->syslogfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+        if (-1 == lrsyslog->syslogfd) {
             syslog(LOG_WARNING, "%s:%d:%s: socket: %s", __FILE__, __LINE__, __func__, strerror(errno));
             // let's try the next entry...
             continue;
@@ -131,19 +137,19 @@ static int lrsyslog_tcp_server_start (
         // application after a restart even if the socket is still registered
         // in the kernel by the old application due to stale connections from
         // clients.
-        ret = setsockopt(lrsyslog->tcp_fd, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int));
+        ret = setsockopt(lrsyslog->syslogfd, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int));
         if (-1 == ret) {
             syslog(LOG_WARNING, "%s:%d:%s: setsockopt: %s", __FILE__, __LINE__, __func__, strerror(errno));
             // We don't care if this doesn't work so much - we can run without REUSEADDR.
         }
 
         // Bind the socket to the port
-        ret = bind(lrsyslog->tcp_fd, p->ai_addr, p->ai_addrlen);
+        ret = bind(lrsyslog->syslogfd, p->ai_addr, p->ai_addrlen);
         if (-1 == ret) {
             // Ok, we couldn't bind this socket - close this socket and try the
             // next hit from getaddrinfo.
             syslog(LOG_WARNING, "%s:%d:%s: bind: %s", __FILE__, __LINE__, __func__, strerror(errno));
-            close(lrsyslog->tcp_fd);
+            close(lrsyslog->syslogfd);
             continue;
         }
 
@@ -165,7 +171,7 @@ static int lrsyslog_tcp_server_start (
 
     // At this point, we have successfully bound up a port. Now we just need to
     // listen for connection on the port.
-    ret = listen(lrsyslog->tcp_fd, TCP_LISTEN_BACKLOG);
+    ret = listen(lrsyslog->syslogfd, TCP_LISTEN_BACKLOG);
     if (-1 == ret) {
         syslog(LOG_ERR, "%s:%d:%s: listen: %s", __FILE__, __LINE__, __func__, strerror(errno));
         return -1;
@@ -178,12 +184,12 @@ static int lrsyslog_tcp_server_start (
     }
     io_uring_prep_accept(
         /* sqe = */ sqe, 
-        /* fd = */ lrsyslog->tcp_fd, 
+        /* fd = */ lrsyslog->syslogfd, 
         /* addrinfo = */ NULL,
         /* addrinfo_len = */ 0,
         /* flags = */ 0
     );
-    io_uring_sqe_set_data(sqe, &lrsyslog->tcp_fd);
+    io_uring_sqe_set_data(sqe, &lrsyslog->syslogfd);
     io_uring_submit(&lrsyslog->ring);
 
     // We're done - we have a fd on the epoll that will trigger on incoming
@@ -192,7 +198,52 @@ static int lrsyslog_tcp_server_start (
 }
 
 
-int lrsyslog_uring_event_tcp_fd (
+int lrsyslog_client_read (
+    struct lrsyslog_s * lrsyslog,
+    struct lrsyslog_client_s * client
+)
+{
+    struct io_uring_sqe * sqe = NULL;
+
+    sqe = io_uring_get_sqe(&lrsyslog->ring);
+    if (NULL == sqe) {
+        syslog(LOG_ERR, "%s:%d:%s: io_uring_get_sqe returned NULL", __FILE__, __LINE__, __func__);
+        return -1;
+    }
+    io_uring_prep_read(
+        /* sqe = */ sqe,
+        /* fd = */ client->fd,
+        /* buf = */ client->read_buf,
+        /* buf_len = */ CONFIG_CLIENT_READ_BUF_LEN,
+        /* offset = */ 0
+    );
+    io_uring_sqe_set_data(sqe, client);
+    io_uring_sqe_set_flags(sqe, IOSQE_IO_LINK);
+
+
+    sqe = io_uring_get_sqe(&lrsyslog->ring);
+    if (NULL == sqe) {
+        syslog(LOG_ERR, "%s:%d:%s: io_uring_get_sqe returned NULL", __FILE__, __LINE__, __func__);
+        return -1;
+    }
+    io_uring_prep_link_timeout(
+        /* sqe = */ sqe, 
+        /* timespec = */ &(struct __kernel_timespec) {
+            .tv_sec = CONFIG_CLIENT_READ_TIMEOUT_S,
+            .tv_nsec = 0
+        },
+        /* flags = */ 0
+    );
+    io_uring_sqe_set_flags(sqe, IOSQE_IO_LINK);
+    io_uring_sqe_set_data(sqe, 0);
+
+    io_uring_submit(&lrsyslog->ring);
+
+    return 0;
+}
+
+
+int lrsyslog_uring_event_syslogfd (
     struct lrsyslog_s * lrsyslog,
     struct io_uring_cqe * cqe
 )
@@ -208,13 +259,15 @@ int lrsyslog_uring_event_tcp_fd (
 
     // malloc a data struct for the user
     struct lrsyslog_client_s * client = malloc(sizeof(struct lrsyslog_client_s));
-    client->sentinel = 18091;
+    client->sentinel = LRSYSLOG_CLIENT_SENTINEL;
     client->fd = cqe->res;
     client->lrsyslog = lrsyslog;
+    client->writing = false;
+    client->closing = false;
 
     // Initialize the client parser
     ret = lrsyslog_client_parser_init(
-        &client->log,
+        &client->parser,
         /* log_cb = */ lrsyslog_client_log_cb,
         /* user_data = */ client
     );
@@ -223,23 +276,11 @@ int lrsyslog_uring_event_tcp_fd (
         return -1;
     }
 
-
-    // add a read request on the new client
-    sqe = io_uring_get_sqe(&lrsyslog->ring);
-    if (NULL == sqe) {
-        syslog(LOG_ERR, "%s:%d:%s: io_uring_get_sqe returned NULL", __FILE__, __LINE__, __func__);
+    ret = lrsyslog_client_read(lrsyslog, client);
+    if (-1 == ret) {
+        syslog(LOG_ERR, "%s:%d:%s: lrsyslog_client_read returned -1", __FILE__, __LINE__, __func__);
         return -1;
     }
-    io_uring_prep_read(
-        sqe,
-        cqe->res,
-        &client->read_buf,
-        4096,
-        0
-    );
-    io_uring_sqe_set_data(sqe, client);
-    io_uring_submit(&lrsyslog->ring);
-
 
     // accept more connections
     sqe = io_uring_get_sqe(&lrsyslog->ring);
@@ -247,14 +288,36 @@ int lrsyslog_uring_event_tcp_fd (
         syslog(LOG_ERR, "%s:%d:%s: io_uring_get_sqe returned NULL", __FILE__, __LINE__, __func__);
         return -1;
     }
-    io_uring_prep_accept(sqe, lrsyslog->tcp_fd, NULL, 0, 0);
-    io_uring_sqe_set_data(sqe, &lrsyslog->tcp_fd);
+    io_uring_prep_accept(sqe, lrsyslog->syslogfd, NULL, 0, 0);
+    io_uring_sqe_set_data(sqe, &lrsyslog->syslogfd);
     io_uring_submit(&lrsyslog->ring);
 
 
     // mark this event as seen
     io_uring_cqe_seen(&lrsyslog->ring, cqe);
 
+
+    return 0;
+}
+
+
+int lrsyslog_client_close (
+    struct lrsyslog_s * lrsyslog,
+    struct lrsyslog_client_s * client
+)
+{
+    struct io_uring_sqe * sqe = NULL;
+
+    // client error, clear it out
+    client->closing = 1;
+    sqe = io_uring_get_sqe(&lrsyslog->ring);
+    if (NULL == sqe) {
+        syslog(LOG_ERR, "%s:%d:%s: io_uring_get_sqe returned NULL", __FILE__, __LINE__, __func__);
+        return -1;
+    }
+    io_uring_prep_close(sqe, client->fd);
+    io_uring_sqe_set_data(sqe, client);
+    io_uring_submit(&lrsyslog->ring);
 
     return 0;
 }
@@ -267,58 +330,48 @@ int lrsyslog_uring_event_client_fd_read (
 )
 {
     int ret = 0;
-    struct io_uring_sqe * sqe;
 
-    if (cqe->res < 0) {
-        // client error, clear it out
-        client->closing = 1;
-        sqe = io_uring_get_sqe(&lrsyslog->ring);
-        if (NULL == sqe) {
-            syslog(LOG_ERR, "%s:%d:%s: io_uring_get_sqe returned NULL", __FILE__, __LINE__, __func__);
+    if (cqe->res <= 0) {
+        ret = lrsyslog_client_close(lrsyslog, client);
+        if (-1 == ret) {
+            syslog(LOG_ERR, "%s:%d:%s: lrsyslog_client_close returned -1", __FILE__, __LINE__, __func__);
             return -1;
         }
-        io_uring_prep_close(sqe, client->fd);
-        io_uring_sqe_set_data(sqe, client);
-        io_uring_submit(&lrsyslog->ring);
+
+        // mark this event as seen
         io_uring_cqe_seen(&lrsyslog->ring, cqe);
         return 0;
-    }
-    if (0 == cqe->res) {
-        // client disconnected, clear it out
-        client->closing = 1;
-        sqe = io_uring_get_sqe(&lrsyslog->ring);
-        if (NULL == sqe) {
-            syslog(LOG_ERR, "%s:%d:%s: io_uring_get_sqe returned NULL", __FILE__, __LINE__, __func__);
-            return -1;
-        }
-        io_uring_prep_close(sqe, client->fd);
-        io_uring_sqe_set_data(sqe, client);
-        io_uring_submit(&lrsyslog->ring);
-        io_uring_cqe_seen(&lrsyslog->ring, cqe);
         return 0;
     }
 
-    ret = lrsyslog_client_parser_parse(&client->log, client->read_buf, cqe->res);
+    ret = lrsyslog_client_parser_parse(&client->parser, client->read_buf, cqe->res);
     if (-1 == ret) {
-        syslog(LOG_ERR, "%s:%d:%s: lrsyslog_client_parser_parse returned -1", __FILE__, __LINE__, __func__);
-        return -1;
+        ret = lrsyslog_client_close(lrsyslog, client);
+        if (-1 == ret) {
+            syslog(LOG_ERR, "%s:%d:%s: lrsyslog_client_close returned -1", __FILE__, __LINE__, __func__);
+            return -1;
+        }
+
+        // mark this event as seen
+        io_uring_cqe_seen(&lrsyslog->ring, cqe);
+        return 0;
+    }
+    if (true == client->writing) {
+        // we haven't consumed all bytes yet; wait until the write returns, and
+        // continue parsing then.
+        client->read_buf_i = ret;
+        client->read_buf_len = cqe->res;
+
+        // mark this event as seen
+        io_uring_cqe_seen(&lrsyslog->ring, cqe);
+        return 0;
     }
 
-
-    // add a new read request on the client
-    sqe = io_uring_get_sqe(&lrsyslog->ring);
-    if (NULL == sqe) {
-        syslog(LOG_ERR, "%s:%d:%s: io_uring_get_sqe returned NULL", __FILE__, __LINE__, __func__);
+    ret = lrsyslog_client_read(lrsyslog, client);
+    if (-1 == ret) {
+        syslog(LOG_ERR, "%s:%d:%s: lrsyslog_client_read returned -1", __FILE__, __LINE__, __func__);
         return -1;
     }
-    io_uring_prep_read(
-        sqe,
-        client->fd,
-        &client->read_buf,
-        4096, 0
-    );
-    io_uring_sqe_set_data(sqe, client);
-    io_uring_submit(&lrsyslog->ring);
     
     // mark this event as seen
     io_uring_cqe_seen(&lrsyslog->ring, cqe);
@@ -339,6 +392,75 @@ int lrsyslog_uring_event_client_fd_closing (
 }
 
 
+int lrsyslog_uring_event_client_fd_write (
+    struct lrsyslog_s * lrsyslog,
+    struct io_uring_cqe * cqe,
+    struct lrsyslog_client_s * client
+)
+{
+    int ret = 0;
+
+    client->writing = false;
+
+    // after we've written a message to nats, we need to check if there is more
+    // data to parse and if so, call the parser.
+
+    if (client->read_buf_i < client->read_buf_len) {
+
+        uint32_t bytes_left = client->read_buf_len - client->read_buf_i;
+
+        ret = lrsyslog_client_parser_parse(
+            /* parser = */ &client->parser,
+            /* buf = */ client->read_buf + client->read_buf_i,
+            /* buf_len = */ bytes_left
+        );
+        if (-1 == ret) {
+            ret = lrsyslog_client_close(lrsyslog, client);
+            if (-1 == ret) {
+                syslog(LOG_ERR, "%s:%d:%s: lrsyslog_client_close returned -1", __FILE__, __LINE__, __func__);
+                return -1;
+            }
+
+            // mark this event as seen
+            io_uring_cqe_seen(&lrsyslog->ring, cqe);
+            return 0;
+        }
+        if (true == client->writing) {
+            client->read_buf_i += ret;
+            // mark this event as seen
+            io_uring_cqe_seen(&lrsyslog->ring, cqe);
+            return 0;
+        }
+
+        // all good, we've parsed all the data available, add a new read
+        // request on the client.
+        ret = lrsyslog_client_read(lrsyslog, client);
+        if (-1 == ret) {
+            syslog(LOG_ERR, "%s:%d:%s: lrsyslog_client_read returned -1", __FILE__, __LINE__, __func__);
+            return -1;
+        }
+
+        // mark this event as seen
+        io_uring_cqe_seen(&lrsyslog->ring, cqe);
+
+        return 0;
+    }
+
+    // we don't have any more data to parse, just add a new read request on the
+    // client.
+    ret = lrsyslog_client_read(lrsyslog, client);
+    if (-1 == ret) {
+        syslog(LOG_ERR, "%s:%d:%s: lrsyslog_client_read returned -1", __FILE__, __LINE__, __func__);
+        return -1;
+    }
+
+    // mark this event as seen
+    io_uring_cqe_seen(&lrsyslog->ring, cqe);
+
+    return 0;
+}
+
+
 int lrsyslog_uring_event_client_fd (
     struct lrsyslog_s * lrsyslog,
     struct io_uring_cqe * cqe
@@ -348,6 +470,9 @@ int lrsyslog_uring_event_client_fd (
 
     if (1 == client->closing)
         return lrsyslog_uring_event_client_fd_closing(lrsyslog, cqe, client);
+
+    if (true == client->writing)
+        return lrsyslog_uring_event_client_fd_write(lrsyslog, cqe, client);
 
     return lrsyslog_uring_event_client_fd_read(lrsyslog, cqe, client);
 }
@@ -362,17 +487,19 @@ int lrsyslog_uring_dispatch (
         io_uring_cqe_seen(&lrsyslog->ring, cqe);
         return 0;
     }
+    if (1 == cqe->user_data) {
+    }
 
-    if (*(int*)cqe->user_data == lrsyslog->tcp_fd)
-        return lrsyslog_uring_event_tcp_fd(lrsyslog, cqe);
+    if (*(int*)cqe->user_data == lrsyslog->syslogfd)
+        return lrsyslog_uring_event_syslogfd(lrsyslog, cqe);
 
     if (*(int*)cqe->user_data == lrsyslog->nats.fd)
         return lrsyslog_uring_event_nats_fd(lrsyslog, cqe);
 
-    if (18091 == ((struct lrsyslog_client_s*)cqe->user_data)->sentinel)
+    if (LRSYSLOG_CLIENT_SENTINEL == ((struct lrsyslog_client_s*)cqe->user_data)->sentinel)
         return lrsyslog_uring_event_client_fd(lrsyslog, cqe);
 
-    syslog(LOG_ERR, "%s:%d:%s: unhandled cqe! user_data=%lld", __FILE__, __LINE__, __func__, cqe->user_data);
+    syslog(LOG_ERR, "%s:%d:%s: unhandled cqe! user_data=%lld (%d)", __FILE__, __LINE__, __func__, cqe->user_data, *(int*)cqe->user_data);
     return -1;
 }
 
@@ -409,7 +536,11 @@ int main (
 
     int ret = 0;
 
-    openlog(CONFIG_SYSLOG_IDENT, LOG_CONS | LOG_PID, LOG_USER);
+#ifdef CONFIG_SYSLOG_PERROR
+    openlog(CONFIG_SYSLOG_IDENT, LOG_PERROR, LOG_USER);
+#else
+    openlog(CONFIG_SYSLOG_IDENT, 0, LOG_USER);
+#endif
 
     struct lrsyslog_s lrsyslog = {
         .sentinel = 8090,

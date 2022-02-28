@@ -19,18 +19,17 @@
 #include <netdb.h>
 
 #include "lrsyslog.h"
-#include "lrsyslog_nats_task.h"
-#include "nats_parser.h"
+#include "lrsyslog_nats.h"
+#include "lrsyslog_nats_parser.h"
 
 
 int lrsyslog_nats_ping_cb (
-    struct nats_parser_s * parser,
+    struct lrsyslog_nats_parser_s * parser,
     void * context,
     void * arg
 )
 {
     struct io_uring_sqe * sqe;
-    int bytes_written = 0;
 
     struct lrsyslog_s * lrsyslog = context;
     if (8090 != lrsyslog->sentinel) {
@@ -79,7 +78,7 @@ int lrsyslog_uring_event_nats_fd (
 
     // Parse the NATS data; one of the callbacks (named *_cb) will be called on
     // a successful parse.
-    ret = nats_parser_parse(&lrsyslog->nats.parser, lrsyslog->nats.buf, cqe->res);
+    ret = lrsyslog_nats_parser_parse(&lrsyslog->nats.parser, lrsyslog->nats.buf, cqe->res);
     if (-1 == ret) {
         syslog(LOG_ERR, "%s:%d:%s: nats_parser_parse returned %d", __FILE__, __LINE__, __func__, ret);
         return -1;

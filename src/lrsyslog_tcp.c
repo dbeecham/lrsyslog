@@ -22,13 +22,13 @@
 #include <stddef.h>
 
 #include "lrsyslog.h"
-#include "lrsyslog_tcp_task.h"
+#include "lrsyslog_tcp.h"
 #include "lrsyslog_client_parser.h"
 
 #define EPOLL_NUM_EVENTS 8
 
 
-static const char * lrsyslog_tcp_task_facility_str (
+static const char * lrsyslog_tcp_facility_str (
     const uint8_t facility
 )
 {
@@ -112,37 +112,57 @@ static const char * lrsyslog_tcp_task_facility_str (
 }
 
 
-static const char * lrsyslog_tcp_task_severity_str (
-    const uint8_t severity
+void lrsyslog_tcp_severity_str (
+    const uint32_t severity,
+    const char ** severity_str,
+    uint32_t * severity_str_len
 )
 {
     switch (severity) {
         case LOG_CRIT:
-            return "crit";
+            *severity_str = "crit";
+            *severity_str_len = 4;
+            return;
 
         case LOG_EMERG:
-            return "emerg";
+            *severity_str = "emerg";
+            *severity_str_len = 5;
+            return;
 
         case LOG_ALERT:
-            return "alert";
+            *severity_str = "alert";
+            *severity_str_len = 5;
+            return;
 
         case LOG_ERR:
-            return "err";
+            *severity_str = "err";
+            *severity_str_len = 3;
+            return;
 
         case LOG_WARNING:
-            return "warning";
+            *severity_str = "warning";
+            *severity_str_len = 7;
+            return;
 
         case LOG_NOTICE:
-            return "notice";
+            *severity_str = "notice";
+            *severity_str_len = 6;
+            return;
 
         case LOG_INFO:
-            return "info";
+            *severity_str = "info";
+            *severity_str_len = 4;
+            return;
 
         case LOG_DEBUG:
-            return "debug";
+            *severity_str = "debug";
+            *severity_str_len = 5;
+            return;
 
         default:
-            return "unknown";
+            *severity_str = "unknown";
+            *severity_str_len = 7;
+            return;
     }
 }
 
@@ -157,49 +177,31 @@ int lrsyslog_client_log_cb (
     const uint32_t pid,
     const char * msg,
     const uint32_t msg_len,
+    const char * msg_len_str,
+    const uint32_t msg_len_str_len,
     void * user_data
 )
 {
-    struct io_uring_sqe * sqe;
     int ret = 0;
-    int bytes_written = 0;
-    char topic[128];
-    int topic_len;
-    char payload_len[32];
-    int payload_len_len = 0;
+    struct io_uring_sqe * sqe;
+    const char * severity_str = 0;
+    uint32_t severity_str_len = 0;
 
     struct lrsyslog_client_s * client = user_data;
-    if (18091 != client->sentinel) {
+    if (LRSYSLOG_CLIENT_SENTINEL != client->sentinel) {
         syslog(LOG_ERR, "%s:%d:%s: client sentinel is wrong!", __FILE__, __LINE__, __func__);
         return -1;
     }
 
     struct lrsyslog_s * lrsyslog = client->lrsyslog;
-    if (8090 != lrsyslog->sentinel) {
+    if (LRSYSLOG_SENTINEL != lrsyslog->sentinel) {
         syslog(LOG_ERR, "%s:%d:%s: lrsyslog sentinel is wrong!", __FILE__, __LINE__, __func__);
         return -1;
     }
 
+    lrsyslog_tcp_severity_str(severity, &severity_str, &severity_str_len);
 
-    topic_len = snprintf(
-        topic,
-        128,
-        "lrsyslog.%.*s.%.*s.%s.out ",
-        host_len, host,
-        tag_len, tag,
-        lrsyslog_tcp_task_severity_str(severity)
-    );
-    if (-1 == topic_len) {
-        syslog(LOG_ERR, "%s:%d:%s: snprintf: %s", __FILE__, __LINE__, __func__, strerror(errno));
-        return -1;
-    }
-
-    payload_len_len = snprintf(
-        payload_len,
-        sizeof(payload_len),
-        "%d\r\n",
-        msg_len
-    );
+    client->writing = true;
 
     sqe = io_uring_get_sqe(&lrsyslog->ring);
     if (NULL == sqe) {
@@ -209,21 +211,45 @@ int lrsyslog_client_log_cb (
     io_uring_prep_writev(
         /* sqe = */ sqe,
         /* fd = */ lrsyslog->nats.fd,
-        /* iovec = */ (struct iovec[]) {
+        /* iovec = */ (const struct iovec[]) {
             {
-                .iov_base = "PUB ",
-                .iov_len = 4
+                .iov_base = "PUB lrsyslog.",
+                .iov_len = 13
             },
             {
-                .iov_base = topic,
-                .iov_len = topic_len
+                .iov_base = (char*)host,
+                .iov_len = host_len,
             },
             {
-                .iov_base = payload_len,
-                .iov_len = payload_len_len
+                .iov_base = ".",
+                .iov_len = 1
             },
             {
-                .iov_base = (void*)msg,
+                .iov_base = (char*)tag,
+                .iov_len = tag_len,
+            },
+            {
+                .iov_base = ".",
+                .iov_len = 1
+            },
+            {
+                .iov_base = (char*)severity_str,
+                .iov_len = severity_str_len
+            },
+            {
+                .iov_base = ".out ",
+                .iov_len = 5
+            },
+            {
+                .iov_base = (char*)msg_len_str,
+                .iov_len = msg_len_str_len,
+            },
+            {
+                .iov_base = "\r\n",
+                .iov_len = 2
+            },
+            {
+                .iov_base = (char*)msg,
                 .iov_len = msg_len
             },
             {
@@ -231,10 +257,29 @@ int lrsyslog_client_log_cb (
                 .iov_len = 2
             }
         },
-        /* ioved_len = */ 5,
+        /* ioved_len = */ 11,
         /* offset = */ 0
     );
+    io_uring_sqe_set_data(sqe, client);
+    io_uring_sqe_set_flags(sqe, IOSQE_IO_LINK);
+
+    sqe = io_uring_get_sqe(&lrsyslog->ring);
+    if (NULL == sqe) {
+        syslog(LOG_ERR, "%s:%d:%s: io_uring_get_sqe returned NULL", __FILE__, __LINE__, __func__);
+        return -1;
+    }
+    io_uring_prep_link_timeout(
+        /* sqe = */ sqe, 
+        /* timespec = */ &(struct __kernel_timespec) {
+            .tv_sec = 3,
+            .tv_nsec = 0
+        },
+        /* flags = */ 0
+    );
+    io_uring_sqe_set_flags(sqe, IOSQE_IO_LINK);
     io_uring_sqe_set_data(sqe, 0);
+
+
     io_uring_submit(&lrsyslog->ring);
 
     return 0;

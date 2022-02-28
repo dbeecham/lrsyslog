@@ -148,6 +148,8 @@ ldflags-$(CONFIG_MARCH_NATIVE) += -march=native
 # build with debug outputs
 cflags-$(CONFIG_DEBUG) += -DDEBUG
 
+cflags-$(CONFIG_SYSLOG_PERROR) += -DCONFIG_SYSLOG_PERROR
+
 ifdef CONFIG_NATS_HOST
 cflags-y += -DCONFIG_NATS_HOST='$(CONFIG_NATS_HOST)' 
 endif
@@ -164,16 +166,20 @@ ifdef CONFIG_PORT
 cflags-y += -DCONFIG_PORT='$(CONFIG_PORT)'
 endif
 
-ifdef CONFIG_MAX_CLIENTS
-cflags-y += -DCONFIG_MAX_CLIENTS='$(CONFIG_MAX_CLIENTS)'
-endif
-
-ifdef CONFIG_NUM_THREADS
-cflags-y += -DCONFIG_NUM_THREADS='$(CONFIG_NUM_THREADS)'
-endif
-
 ifdef CONFIG_SYSLOG_IDENT
 cflags-y += -DCONFIG_SYSLOG_IDENT='$(CONFIG_SYSLOG_IDENT)'
+endif
+
+ifdef CONFIG_CLIENT_READ_TIMEOUT_S
+cflags-y += -DCONFIG_CLIENT_READ_TIMEOUT_S='$(CONFIG_CLIENT_READ_TIMEOUT_S)'
+endif
+
+ifdef CONFIG_CLIENT_READ_BUF_LEN
+cflags-y += -DCONFIG_CLIENT_READ_BUF_LEN='$(CONFIG_CLIENT_READ_BUF_LEN)'
+endif
+
+ifdef CONFIG_NATS_READ_BUF_LEN
+cflags-y += -DCONFIG_NATS_READ_BUF_LEN='$(CONFIG_NATS_READ_BUF_LEN)'
 endif
 
 # }}}
@@ -188,8 +194,8 @@ default: all
 
 all: lrsyslog
 
-lrsyslog: lrsyslog.o lrsyslog_tcp_task.o lrsyslog_nats_task.o lrsyslog_client_parser.o \
-		  nats_parser.o lrsyslog_args_parser.o
+lrsyslog: lrsyslog.o lrsyslog_tcp.o lrsyslog_nats.o lrsyslog_client_parser.o \
+		  lrsyslog_nats_parser.o lrsyslog_args_parser.o
 
 # }}}
 

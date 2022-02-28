@@ -130,17 +130,22 @@ menu "syslog host/port"
         default 514
 endmenu
 
-config MAX_CLIENTS
-    int "max simultaneous clients"
-    default 64
-    help
-        Each client adds about 1.4k stack memory usage.
-
-config NUM_THREADS
-    int "Number of worker threads"
-    default 4
-
-
 config SYSLOG_IDENT
     string "SYSLOG_IDENT"
     default "lrsyslog-custom"
+
+config SYSLOG_PERROR
+    bool "also syslog to stderr (LOG_PERROR)"
+    default n
+
+config CLIENT_READ_TIMEOUT_S
+    int "client read timeout in seconds"
+    default 30
+
+config CLIENT_READ_BUF_LEN
+    int "client read buffer size"
+    default 4096
+
+config NATS_READ_BUF_LEN
+    int "nats read buffer size"
+    default 4096

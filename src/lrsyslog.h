@@ -14,7 +14,7 @@
 #include <liburing.h>
 
 #include "lrsyslog_client_parser.h"
-#include "nats_parser.h"
+#include "lrsyslog_nats_parser.h"
 
 #ifndef CONFIG_URING_DEPTH
 #define CONFIG_URING_DEPTH 256
@@ -63,38 +63,56 @@
 #define CONFIG_SYSLOG_IDENT "lrsyslog-custom"
 #endif
 
-struct lrsyslog_client_watchdog_s {
-    int sentinel;
-    int timer_fd;
-};
+#ifndef CONFIG_CLIENT_READ_BUF_LEN
+#define CONFIG_CLIENT_READ_BUF_LEN 4096
+#endif
+
+#ifndef CONFIG_NATS_READ_BUF_LEN
+#define CONFIG_NATS_READ_BUF_LEN 4096
+#endif
+
+#ifndef CONFIG_CLIENT_READ_TIMEOUT_S
+#define CONFIG_CLIENT_READ_TIMEOUT_S 30
+#endif
+
+#define LRSYSLOG_SENTINEL 8090
+#define LRSYSLOG_CLIENT_SENTINEL 8091
+#define LRSYSLOG_PUB_SENTINEL 8091
+
 
 struct lrsyslog_opts_s {
     int port;
+};
+
+struct lrsyslog_nats_pub_s {
+    char msg[4096];
+    uint32_t msg_len;
 };
 
 struct lrsyslog_client_s {
     int sentinel;
     int fd;
     int closing;
-    struct lrsyslog_client_watchdog_s watchdog; 
-    struct lrsyslog_syslog_s log;
+    bool writing;
+    struct lrsyslog_client_parser_s parser;
     struct lrsyslog_s * lrsyslog;
-    char read_buf[4096];
+    char read_buf[CONFIG_CLIENT_READ_BUF_LEN];
+    uint32_t read_buf_i;
+    uint32_t read_buf_len;
 };
 
 struct lrsyslog_s {
     int sentinel;
-    struct sockaddr_storage client_addr;
-    socklen_t client_addr_len;
     struct io_uring ring;
-    int tcp_fd;
-    int tcp_task_epoll_fd;
+    int syslogfd;
     struct {
         int fd;
-        char buf[4096];
-        struct nats_parser_s parser;
+        char buf[CONFIG_NATS_READ_BUF_LEN];
+        struct lrsyslog_nats_parser_s parser;
     } nats;
     struct lrsyslog_opts_s opts;
+    sigset_t sigset;
+    int signalfd;
 };
 
 int lrsyslog_uring_event_nats_fd (
@@ -107,7 +125,7 @@ int lrsyslog_nats_connect (
 );
 
 int lrsyslog_nats_ping_cb (
-    struct nats_parser_s * parser,
+    struct lrsyslog_nats_parser_s * parser,
     void * context,
     void * arg
 );
@@ -122,5 +140,7 @@ int lrsyslog_client_log_cb (
     const uint32_t pid,
     const char * msg,
     const uint32_t msg_len,
+    const char * msg_len_str,
+    const uint32_t msg_len_str_len,
     void * user_data
 );
