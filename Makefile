@@ -188,8 +188,8 @@ default: all
 
 all: lrsyslog
 
-lrsyslog: lrsyslog.o lrsyslog_tcp_task.o lrsyslog_nats_task.o lrsyslog_client_parser.o \
-		  nats_parser.o lrsyslog_args_parser.o
+lrsyslog: lrsyslog.o lrsyslog_tcp.o lrsyslog_nats.o lrsyslog_client_parser.o \
+		  lrsyslog_nats_parser.o lrsyslog_args_parser.o
 
 # }}}
 

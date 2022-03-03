@@ -5,4 +5,5 @@
 *.bak
 test_driver
 .ccls-cache
-lsyslog
+lrsyslog
+.config.old

@@ -3,11 +3,11 @@
 #include <syslog.h>
 #include <stdio.h>
 
-#include "nats_parser.h"
+#include "lrsyslog_nats_parser.h"
 
 %%{
 
-    machine nats;
+    machine lrsyslog_nats;
 
     access parser->;
 
@@ -31,9 +31,9 @@
 
 }%%
 
-int nats_parser_init (
-    struct nats_parser_s * parser,
-    int (*ping_cb)(struct nats_parser_s * parser, void * context, void * arg),
+int lrsyslog_nats_parser_init (
+    struct lrsyslog_nats_parser_s * parser,
+    int (*ping_cb)(struct lrsyslog_nats_parser_s * parser, void * context, void * arg),
     void * context,
     void * arg
 )
@@ -45,8 +45,8 @@ int nats_parser_init (
     return 0;
 }
 
-int nats_parser_parse (
-    struct nats_parser_s * parser,
+int lrsyslog_nats_parser_parse (
+    struct lrsyslog_nats_parser_s * parser,
     const char * const buf,
     const int buf_len
 )

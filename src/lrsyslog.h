@@ -14,7 +14,17 @@
 #include <liburing.h>
 
 #include "lrsyslog_client_parser.h"
-#include "nats_parser.h"
+#include "lrsyslog_nats_parser.h"
+
+
+#ifndef likely
+# define likely(x)	__builtin_expect(!!(x), 1)
+#endif
+
+#ifndef unlikely
+# define unlikely(x)	__builtin_expect(!!(x), 0)
+#endif
+
 
 #ifndef CONFIG_URING_DEPTH
 #define CONFIG_URING_DEPTH 256
@@ -63,10 +73,9 @@
 #define CONFIG_SYSLOG_IDENT "lrsyslog-custom"
 #endif
 
-struct lrsyslog_client_watchdog_s {
-    int sentinel;
-    int timer_fd;
-};
+#define LRSYSLOG_SENTINEL 8090
+#define LRSYSLOG_CLIENT_SENTINEL 8091
+#define LRSYSLOG_CLIENT_WATCHDOG_SENTINEL 8092
 
 struct lrsyslog_opts_s {
     int port;
@@ -76,10 +85,12 @@ struct lrsyslog_client_s {
     int sentinel;
     int fd;
     int closing;
-    struct lrsyslog_client_watchdog_s watchdog; 
-    struct lrsyslog_syslog_s log;
+    int writing_to_nats;
+    struct lrsyslog_client_parser_s parser;
     struct lrsyslog_s * lrsyslog;
     char read_buf[4096];
+    uint32_t read_buf_len;
+    char * read_buf_p;
 };
 
 struct lrsyslog_s {
@@ -92,35 +103,7 @@ struct lrsyslog_s {
     struct {
         int fd;
         char buf[4096];
-        struct nats_parser_s parser;
+        struct lrsyslog_nats_parser_s parser;
     } nats;
     struct lrsyslog_opts_s opts;
 };
-
-int lrsyslog_uring_event_nats_fd (
-    struct lrsyslog_s * lrsyslog,
-    struct io_uring_cqe * cqe
-);
-
-int lrsyslog_nats_connect (
-    struct lrsyslog_s * lrsyslog
-);
-
-int lrsyslog_nats_ping_cb (
-    struct nats_parser_s * parser,
-    void * context,
-    void * arg
-);
-
-int lrsyslog_client_log_cb (
-    const char * host,
-    const uint32_t host_len,
-    const char * tag,
-    const uint32_t tag_len,
-    const uint32_t facility,
-    const uint32_t severity,
-    const uint32_t pid,
-    const char * msg,
-    const uint32_t msg_len,
-    void * user_data
-);
