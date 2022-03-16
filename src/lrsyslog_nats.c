@@ -23,6 +23,58 @@
 #include "lrsyslog_nats_parser.h"
 
 
+int lrsyslog_nats_read (
+    struct lrsyslog_s * lrsyslog,
+    struct lrsyslog_nats_s * nats
+)
+{
+    int ret = 0;
+    struct lrsyslog_uring_event_s * event = NULL;
+    struct io_uring_sqe * sqe;
+
+    ret = lrsyslog_uring_event_new(lrsyslog, &event);
+    if (unlikely(-1 == ret)) {
+        syslog(LOG_ERR, "%s:%d:%s: lrsyslog_uring_event_new returned -1", __FILE__, __LINE__, __func__);
+        return -1;
+    }
+
+    event->type = LRSYSLOG_URING_EVENT_NATS_READ;
+    event->nats = nats;
+
+    // read some data from nats
+    sqe = io_uring_get_sqe(&lrsyslog->ring);
+    if (unlikely(NULL == sqe)) {
+        syslog(LOG_ERR, "%s:%d:%s: io_uring_get_sqe returned NULL", __FILE__, __LINE__, __func__);
+        return -1;
+    }
+    io_uring_prep_read(sqe, nats->fd, nats->buf, CONFIG_NATS_READ_BUF_LEN, 0);
+    io_uring_sqe_set_data(sqe, event);
+    io_uring_sqe_set_flags(sqe, IOSQE_IO_LINK);
+
+
+    // link a timeout
+    sqe = io_uring_get_sqe(&lrsyslog->ring);
+    if (unlikely(NULL == sqe)) {
+        syslog(LOG_ERR, "%s:%d:%s: io_uring_get_sqe returned NULL", __FILE__, __LINE__, __func__);
+        return -1;
+    }
+    io_uring_prep_link_timeout(
+        /* sqe = */ sqe,
+        /* timeout = */ &(struct __kernel_timespec) {
+            .tv_sec = CONFIG_NATS_TIMEOUT_S,
+            .tv_nsec = 0
+        },
+        /* flags = */ 0
+    );
+    io_uring_sqe_set_data(sqe, 0);
+    io_uring_sqe_set_flags(sqe, IOSQE_IO_LINK);
+
+    io_uring_submit(&lrsyslog->ring);
+
+    return 0;
+}
+
+
 int lrsyslog_nats_ping_cb (
     struct lrsyslog_nats_parser_s * parser,
     void * context,
@@ -30,12 +82,7 @@ int lrsyslog_nats_ping_cb (
 )
 {
     struct io_uring_sqe * sqe;
-
     struct lrsyslog_s * lrsyslog = context;
-    if (8090 != lrsyslog->sentinel) {
-        syslog(LOG_ERR, "%s:%d:%s: lrsyslog sentinel is wrong!", __FILE__, __LINE__, __func__);
-        return -1;
-    }
 
     // write a PONG to NATS
     sqe = io_uring_get_sqe(&lrsyslog->ring);
@@ -59,12 +106,12 @@ int lrsyslog_nats_ping_cb (
 }
 
 
-int lrsyslog_uring_event_nats_fd (
+int lrsyslog_uring_event_nats_read (
     struct lrsyslog_s * lrsyslog,
-    struct io_uring_cqe * cqe
+    struct io_uring_cqe * cqe,
+    struct lrsyslog_uring_event_s * event
 )
 {
-    struct io_uring_sqe * sqe;
     int ret = 0;
 
     if (cqe->res < 0) {
@@ -79,21 +126,24 @@ int lrsyslog_uring_event_nats_fd (
     // Parse the NATS data; one of the callbacks (named *_cb) will be called on
     // a successful parse.
     ret = lrsyslog_nats_parser_parse(&lrsyslog->nats.parser, lrsyslog->nats.buf, cqe->res);
-    if (-1 == ret) {
+    if (unlikely(-1 == ret)) {
         syslog(LOG_ERR, "%s:%d:%s: lrsyslog_nats_parser_parse returned %d", __FILE__, __LINE__, __func__, ret);
         return -1;
     }
 
-    // add a new read request on nats
-    sqe = io_uring_get_sqe(&lrsyslog->ring);
-    if (NULL == sqe) {
-        syslog(LOG_ERR, "%s:%d:%s: io_uring_get_sqe returned NULL", __FILE__, __LINE__, __func__);
+    ret = lrsyslog_nats_read(lrsyslog, &lrsyslog->nats);
+    if (unlikely(-1 == ret)) {
+        syslog(LOG_ERR, "%s:%d:%s: lrsyslog_nats_read returned -1", __FILE__, __LINE__, __func__);
         return -1;
     }
-    io_uring_prep_read(sqe, lrsyslog->nats.fd, lrsyslog->nats.buf, 4096, 0);
-    io_uring_sqe_set_data(sqe, &lrsyslog->nats.fd);
 
     // mark this event as seen
+    ret = lrsyslog_uring_event_rc_sub(lrsyslog, event);
+    if (unlikely(-1 == ret)) {
+        syslog(LOG_ERR, "%s:%d:%s: lrsyslog_uring_event_rc_sub returned -1", __FILE__, __LINE__, __func__);
+        return -1;
+    }
+
     io_uring_cqe_seen(&lrsyslog->ring, cqe);
 
     return 0;
@@ -104,7 +154,6 @@ int lrsyslog_nats_connect (
     struct lrsyslog_s * lrsyslog
 )
 {
-    struct io_uring_sqe * sqe;
     int ret = 0;
     struct addrinfo *servinfo, *p;
 
@@ -160,14 +209,11 @@ int lrsyslog_nats_connect (
         return -1;
     }
 
-    // read some data from nats
-    sqe = io_uring_get_sqe(&lrsyslog->ring);
-    if (NULL == sqe) {
-        syslog(LOG_ERR, "%s:%d:%s: io_uring_get_sqe returned NULL", __FILE__, __LINE__, __func__);
+    ret = lrsyslog_nats_read(lrsyslog, &lrsyslog->nats);
+    if (-1 == ret) {
+        syslog(LOG_ERR, "%s:%d:%s: lrsyslog_nats_read returned -1", __FILE__, __LINE__, __func__);
         return -1;
     }
-    io_uring_prep_read(sqe, lrsyslog->nats.fd, lrsyslog->nats.buf, 4096, 0);
-    io_uring_sqe_set_data(sqe, &lrsyslog->nats.fd);
 
     return 0;
 }

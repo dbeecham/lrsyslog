@@ -9,9 +9,10 @@ int lrsyslog_nats_ping_cb (
     void * arg
 );
 
-int lrsyslog_uring_event_nats_fd (
+int lrsyslog_uring_event_nats_read (
     struct lrsyslog_s * lrsyslog,
-    struct io_uring_cqe * cqe
+    struct io_uring_cqe * cqe,
+    struct lrsyslog_uring_event_s * event
 );
 
 int lrsyslog_nats_connect (

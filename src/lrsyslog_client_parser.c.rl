@@ -1,11 +1,16 @@
 #define _POSIX_C_SOURCE 201805L
 
+#include <stdbool.h>
+
 #include "lrsyslog.h"
 #include "lrsyslog_client_parser.h"
+
 
 %%{
 
     machine client;
+
+    alphtype unsigned int;
 
     access parser->;
 
@@ -16,9 +21,9 @@
 
     rfc5424_eol := (
         [\r\n] @{ 
-            if (NULL != parser->log_cb) {
+            if (NULL != parser->cbs.log_cb) {
                 parser->msg_len_str_len = snprintf(parser->msg_len_str, sizeof(parser->msg_len_str), "%d", parser->msg_len);
-                ret = parser->log_cb(
+                ret = parser->cbs.log_cb(
                     /* host = */ parser->host,
                     /* host_len = */ parser->host_len,
                     /* tag = */ parser->tag,
@@ -37,7 +42,7 @@
                     return -1;
                 }
             }
-            syslog(LOG_DEBUG, "%s:%d:%s: returning for now (pe - p = %d)", __FILE__, __LINE__, __func__, pe - p);
+            called_cb = true;
             fnext main; 
             fbreak;
         }
@@ -114,7 +119,7 @@
             '-' @rfc5424_tag_unknown 
             | 
             (
-                [A-Za-z0-9+\-] $rfc5424_tag_copy | '.' $rfc5424_safe_tag_copy
+                [A-Za-z0-9+()\-] $rfc5424_tag_copy | '.' $rfc5424_safe_tag_copy
             ){1,127} >to(rfc5424_tag_init)
         )
         ' ' @{fgoto process_id;}
@@ -195,58 +200,56 @@
     ) $err{ syslog(LOG_WARNING, "%s:%d:%s: failed to parse priority at %c, buf=%s\n", __FILE__, __LINE__, __func__, *p, buf); fgoto gobble; };
         
 
-    # rfc5424 message main entry; always starts with a priority
-    main := rfc5424_priority;
+    # rfc5424 message main entry; always starts with a priority. may have a lingering newline from last message.
+    main := '\n'? rfc5424_priority;
 
 
     write data;
 
 }%%
 
+
 int lrsyslog_client_parser_init (
     struct lrsyslog_client_parser_s * parser,
-    int (*log_cb)(
-        const char * host,
-        const uint32_t host_len,
-        const char * tag,
-        const uint32_t tag_len,
-        const uint32_t facility,
-        const uint32_t severity,
-        const uint32_t pid,
-        const char * msg,
-        const uint32_t msg_len,
-        const char * msg_len_str,
-        const uint32_t msg_len_str_len,
-        void * user_data
-    ),
+    struct lrsyslog_client_parser_callbacks_s callbacks,
     void * user_data
 )
 {
     %% write init;
     parser->user_data = user_data;
-    parser->log_cb = log_cb;
+    parser->cbs = callbacks;
+
+    if (NULL == user_data) {
+        syslog(LOG_ERR, "%s:%d:%s: not", __FILE__, __LINE__, __func__);
+        return -1;
+    }
 
     return 0;
 }
 
+
 int lrsyslog_client_parser_parse (
     struct lrsyslog_client_parser_s * parser,
-    const char * const buf,
-    const int buf_len
+    const uint8_t * const buf,
+    const uint32_t buf_len,
+    uint32_t * parsed_len
 )
 {
     int ret = 0;
     div_t d = {0};
 
-syslog(LOG_DEBUG, "%s:%d:%s: hi!", __FILE__, __LINE__, __func__);
-
-    const char * p = buf;
-    const char * pe = buf + buf_len;
-    const char * eof = 0;
+    bool called_cb = false;
+    const uint8_t * p = buf;
+    const uint8_t * pe = buf + buf_len;
+    const uint8_t * eof = 0;
 
     %% write exec;
 
-    syslog(LOG_INFO, "%s:%d:%s: have %d bytes left of %d (consumed %d)", __FILE__, __LINE__, __func__, (pe - p), buf_len, p - buf);
-    return p - buf;
-
+    *parsed_len = p - buf;
+    if (true == called_cb) {
+        return 1;
+    }
+    else {
+        return 0;
+    }
 }

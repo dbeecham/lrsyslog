@@ -7,3 +7,9 @@ test_driver
 .ccls-cache
 lrsyslog
 .config.old
+tags
+.types_c.taghl
+cscope.*
+perf.data
+out
+.gdb_history

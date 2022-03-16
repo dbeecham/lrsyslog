@@ -57,7 +57,7 @@ cflags-y      += -std=c11 -Wall -Wextra -Wno-implicit-fallthrough -Wno-unused-co
 cflags-y      += -Werror=format-security -Werror=implicit-function-declaration 
 cflags-y      += -Wshadow -Wdouble-promotion -Wformat=2 -Wformat-truncation -Wvla 
 cflags-y      += -Wno-unused-parameter -Wno-unused-function
-cflags-y      +=-fno-common
+cflags-y      += -fno-common
 cflags-y      += -pipe
 LDFLAGS        = 
 ldflags-y      = $(LDFLAGS) $(EXTRA_LDFLAGS)
@@ -133,13 +133,17 @@ ldlibs-$(CONFIG_ASAN) += -lasan
 cflags-$(CONFIG_UBSAN) += -fsanitize=undefined
 ldflags-$(CONFIG_UBSAN) += -fsanitize=undefined
 
-# build with debug info
+# optimize for debug
 cflags-$(CONFIG_OPTIMIZE_DEBUG) += -O0 -g3
 ldflags-$(CONFIG_OPTIMIZE_DEBUG) += -O0 -g3
 
-# build optimize for smallness
+# -Os
 cflags-$(CONFIG_OPTIMIZE_SMALL) += -Os
 ldflags-$(CONFIG_OPTIMIZE_SMALL) += -Os
+
+# -O2
+cflags-$(CONFIG_OPTIMIZE_NORMAL) += -O2
+ldflags-$(CONFIG_OPTIMIZE_NORMAL) += -O2
 
 # -march=native
 cflags-$(CONFIG_MARCH_NATIVE) += -march=native
@@ -176,6 +180,30 @@ ifdef CONFIG_SYSLOG_IDENT
 cflags-y += -DCONFIG_SYSLOG_IDENT='$(CONFIG_SYSLOG_IDENT)'
 endif
 
+ifdef CONFIG_CLIENT_READ_BUF_LEN
+cflags-y += -DCONFIG_CLIENT_READ_BUF_LEN='$(CONFIG_CLIENT_READ_BUF_LEN)'
+endif
+
+ifdef CONFIG_NATS_READ_BUF_LEN
+cflags-y += -DCONFIG_NATS_READ_BUF_LEN='$(CONFIG_NATS_READ_BUF_LEN)'
+endif
+
+ifdef CONFIG_MAX_CLIENTS
+cflags-y += -DCONFIG_MAX_CLIENTS='$(CONFIG_MAX_CLIENTS)'
+endif
+
+ifdef CONFIG_URING_DEPTH
+cflags-y += -DCONFIG_URING_DEPTH='$(CONFIG_URING_DEPTH)'
+endif
+
+ifdef CONFIG_URING_HANDLES
+cflags-y += -DCONFIG_URING_HANDLES='$(CONFIG_URING_HANDLES)'
+endif
+
+ifdef CONFIG_CLIENT_TIMEOUT_S
+cflags-y += -DCONFIG_CLIENT_TIMEOUT_S='$(CONFIG_CLIENT_TIMEOUT_S)'
+endif
+
 # }}}
 
 
@@ -189,7 +217,7 @@ default: all
 all: lrsyslog
 
 lrsyslog: lrsyslog.o lrsyslog_tcp.o lrsyslog_nats.o lrsyslog_client_parser.o \
-		  lrsyslog_nats_parser.o lrsyslog_args_parser.o
+		  lrsyslog_nats_parser.o lrsyslog_args_parser.o lrsyslog_client.o
 
 # }}}
 

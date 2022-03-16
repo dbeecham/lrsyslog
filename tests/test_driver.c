@@ -28,9 +28,9 @@ static int log_cb_raw_msg_len = 0;
 
 void test_lrsyslog_client_parser_init() {
     int ret = 0;
-    struct lrsyslog_syslog_s lrsyslog_syslog = {0};
+    struct lrsyslog_client_parser_s lrsyslog_client_parser = {0};
     ret = lrsyslog_client_parser_init(
-        /* parser = */ &lrsyslog_syslog,
+        /* parser = */ &lrsyslog_client_parser,
         /* log_cb = */ NULL,
         /* context = */ NULL
     );
@@ -53,6 +53,8 @@ int test_lrsyslog_client_parser_parses_basic_log_cb (
     const uint32_t pid,
     const char * msg,
     const uint32_t msg_len,
+    const char * msg_len_str,
+    const uint32_t msg_len_str_len,
     void * user_data
 )
 {
@@ -67,13 +69,14 @@ int test_lrsyslog_client_parser_parses_basic_log_cb (
 
     return 0;
 }
+
 void test_lrsyslog_client_parser_parses_basic_log() {
     int ret = 0;
-    struct lrsyslog_syslog_s lrsyslog_syslog = {0};
+    struct lrsyslog_client_parser_s lrsyslog_client_parser = {0};
     int cb_called = 0;
 
     ret = lrsyslog_client_parser_init(
-        /* parser = */ &lrsyslog_syslog,
+        /* parser = */ &lrsyslog_client_parser,
         /* log_cb = */ test_lrsyslog_client_parser_parses_basic_log_cb,
         /* user_data = */ &cb_called
     );
@@ -83,7 +86,7 @@ void test_lrsyslog_client_parser_parses_basic_log() {
     int buf_len = strlen(buf);
 
     ret = lrsyslog_client_parser_parse(
-        /* parser = */ &lrsyslog_syslog,
+        /* parser = */ &lrsyslog_client_parser,
         /* buf = */ buf,
         /* buf_len = */ buf_len
     );
@@ -108,6 +111,8 @@ int test_lrsyslog_client_parser_parses_log_with_no_tag_cb(
     const uint32_t pid,
     const char * msg,
     const uint32_t msg_len,
+    const char * msg_len_str,
+    const uint32_t msg_len_str_len,
     void * user_data
 )
 {
@@ -123,11 +128,11 @@ int test_lrsyslog_client_parser_parses_log_with_no_tag_cb(
 
 void test_lrsyslog_client_parser_parses_log_with_no_tag() {
     int ret = 0;
-    struct lrsyslog_syslog_s lrsyslog_syslog = {0};
+    struct lrsyslog_client_parser_s lrsyslog_client_parser = {0};
     int cb_called = 0;
 
     ret = lrsyslog_client_parser_init(
-        /* parser = */ &lrsyslog_syslog,
+        /* parser = */ &lrsyslog_client_parser,
         /* log_cb = */ test_lrsyslog_client_parser_parses_log_with_no_tag_cb,
         /* context = */ &cb_called
     );
@@ -137,11 +142,11 @@ void test_lrsyslog_client_parser_parses_log_with_no_tag() {
     int buf_len = strlen(buf);
 
     ret = lrsyslog_client_parser_parse(
-        /* parser = */ &lrsyslog_syslog,
+        /* parser = */ &lrsyslog_client_parser,
         /* buf = */ buf,
         /* buf_len = */ buf_len
     );
-    assert(0 == ret);
+    assert(buf_len == ret);
     assert(1 == cb_called);
 
     printf("%s: OK\n", __func__);
@@ -159,6 +164,8 @@ int test_lrsyslog_client_parser_parses_log_with_accuracy_cb(
     const uint32_t pid,
     const char * msg,
     const uint32_t msg_len,
+    const char * msg_len_str,
+    const uint32_t msg_len_str_len,
     void * user_data
 )
 {
@@ -176,11 +183,11 @@ int test_lrsyslog_client_parser_parses_log_with_accuracy_cb(
 
 void test_lrsyslog_client_parser_parses_log_with_accuracy() {
     int ret = 0;
-    struct lrsyslog_syslog_s lrsyslog_syslog = {0};
+    struct lrsyslog_client_parser_s lrsyslog_client_parser = {0};
     int cb_called = 0;
 
     ret = lrsyslog_client_parser_init(
-        /* parser = */ &lrsyslog_syslog,
+        /* parser = */ &lrsyslog_client_parser,
         /* log_cb = */ test_lrsyslog_client_parser_parses_log_with_accuracy_cb,
         /* context = */ &cb_called
     );
@@ -189,11 +196,11 @@ void test_lrsyslog_client_parser_parses_log_with_accuracy() {
     char buf[] = "<13>1 2021-04-12T15:42:28.075395+02:00 pp-ws-dbe hellsadf - - [timeQuality tzKnown=\"1\" isSynced=\"1\" syncAccuracy=\"298500\"] hi\n";
     int buf_len = strlen(buf);
     ret = lrsyslog_client_parser_parse(
-        /* parser = */ &lrsyslog_syslog,
+        /* parser = */ &lrsyslog_client_parser,
         /* buf = */ buf,
         /* buf_len = */ buf_len
     );
-    assert(0 == ret);
+    assert(buf_len == ret);
     assert(1 == cb_called);
 
     printf("%s: OK\n", __func__);
@@ -210,6 +217,8 @@ int test_lrsyslog_client_parser_parses_log_from_gwy01_0_cb(
     const uint32_t pid,
     const char * msg,
     const uint32_t msg_len,
+    const char * msg_len_str,
+    const uint32_t msg_len_str_len,
     void * user_data
 )
 {
@@ -234,11 +243,11 @@ int test_lrsyslog_client_parser_parses_log_from_gwy01_0_cb(
 
 void test_lrsyslog_client_parser_parses_log_from_gwy01_0() {
     int ret = 0;
-    struct lrsyslog_syslog_s lrsyslog_syslog = {0};
+    struct lrsyslog_client_parser_s lrsyslog_client_parser = {0};
     int cb_called = 0;
 
     ret = lrsyslog_client_parser_init(
-        /* parser = */ &lrsyslog_syslog,
+        /* parser = */ &lrsyslog_client_parser,
         /* log_cb = */ test_lrsyslog_client_parser_parses_log_from_gwy01_0_cb,
         /* context = */ &cb_called
     );
@@ -251,11 +260,11 @@ void test_lrsyslog_client_parser_parses_log_from_gwy01_0() {
     int buf_len = strlen(buf);
 
     ret = lrsyslog_client_parser_parse(
-        /* parser = */ &lrsyslog_syslog,
+        /* parser = */ &lrsyslog_client_parser,
         /* buf = */ buf,
         /* buf_len = */ buf_len
     );
-    assert(0 == ret);
+    assert(buf_len == ret);
     assert(1 == cb_called);
 
     printf("%s: OK\n", __func__);
@@ -272,6 +281,8 @@ int test_lrsyslog_client_parser_parses_log_from_gwy01_1_cb(
     const uint32_t pid,
     const char * msg,
     const uint32_t msg_len,
+    const char * msg_len_str,
+    const uint32_t msg_len_str_len,
     void * user_data
 )
 {
@@ -296,11 +307,11 @@ int test_lrsyslog_client_parser_parses_log_from_gwy01_1_cb(
 
 void test_lrsyslog_client_parser_parses_log_from_gwy01_1() {
     int ret = 0;
-    struct lrsyslog_syslog_s lrsyslog_syslog = {0};
+    struct lrsyslog_client_parser_s lrsyslog_client_parser = {0};
     int cb_called = 0;
 
     ret = lrsyslog_client_parser_init(
-        /* parser = */ &lrsyslog_syslog,
+        /* parser = */ &lrsyslog_client_parser,
         /* callbacks = */ test_lrsyslog_client_parser_parses_log_from_gwy01_1_cb,
         /* context = */ &cb_called
     );
@@ -310,11 +321,11 @@ void test_lrsyslog_client_parser_parses_log_from_gwy01_1() {
     int buf_len = strlen(buf);
 
     ret = lrsyslog_client_parser_parse(
-        /* parser = */ &lrsyslog_syslog,
+        /* parser = */ &lrsyslog_client_parser,
         /* buf = */ buf,
         /* buf_len = */ buf_len
     );
-    assert(0 == ret);
+    assert(buf_len == ret);
     assert(1 == cb_called);
 
     printf("%s: OK\n", __func__);
@@ -332,6 +343,8 @@ int test_lrsyslog_client_parser_parses_log_from_gwy01_2_cb(
     const uint32_t pid,
     const char * msg,
     const uint32_t msg_len,
+    const char * msg_len_str,
+    const uint32_t msg_len_str_len,
     void * user_data
 )
 {
@@ -358,11 +371,11 @@ int test_lrsyslog_client_parser_parses_log_from_gwy01_2_cb(
 
 void test_lrsyslog_client_parser_parses_log_from_gwy01_2() {
     int ret = 0;
-    struct lrsyslog_syslog_s lrsyslog_syslog = {0};
+    struct lrsyslog_client_parser_s lrsyslog_client_parser = {0};
     int cb_called = 0;
 
     ret = lrsyslog_client_parser_init(
-        /* parser = */ &lrsyslog_syslog,
+        /* parser = */ &lrsyslog_client_parser,
         /* log_cb = */ test_lrsyslog_client_parser_parses_log_from_gwy01_2_cb,
         /* context = */ &cb_called
     );
@@ -372,12 +385,126 @@ void test_lrsyslog_client_parser_parses_log_from_gwy01_2() {
     int buf_len = strlen(buf);
 
     ret = lrsyslog_client_parser_parse(
-        /* parser = */ &lrsyslog_syslog,
+        /* parser = */ &lrsyslog_client_parser,
         /* buf = */ buf,
         /* buf_len = */ buf_len
     );
-    assert(0 == ret);
+    assert(buf_len == ret);
     assert(1 == cb_called);
+
+
+    printf("%s: OK\n", __func__);
+}
+
+
+int test_lrsyslog_client_parser_parses_log_from_gwy01_3_cb(
+    const char * host,
+    const uint32_t host_len,
+    const char * tag,
+    const uint32_t tag_len,
+    const uint32_t facility,
+    const uint32_t severity,
+    const uint32_t pid,
+    const char * msg,
+    const uint32_t msg_len,
+    const char * msg_len_str,
+    const uint32_t msg_len_str_len,
+    void * user_data
+)
+{
+    int * cb_called = user_data;
+    *cb_called += 1;
+
+    assert(host_len == strlen("0d182d364752354b"));
+    assert(0 == memcmp(host, "0d182d364752354b", strlen("0d182d364752354b")));
+
+    return 0;
+}
+
+void test_lrsyslog_client_parser_parses_log_from_gwy01_3() {
+    int ret = 0;
+    struct lrsyslog_client_parser_s lrsyslog_client_parser = {0};
+    int cb_called = 0;
+
+    ret = lrsyslog_client_parser_init(
+        /* parser = */ &lrsyslog_client_parser,
+        /* log_cb = */ test_lrsyslog_client_parser_parses_log_from_gwy01_3_cb,
+        /* context = */ &cb_called
+    );
+    assert(0 == ret);
+
+    char buf[] = 
+        "<30>1 2022-03-14T09:39:50.816106+00:00 0d182d364752354b avahi-autoipd(eth0) 199 - -  Callout STOP, address 169.254.5.109 on interface eth0\n"
+        "<158>1 2022-03-14T09:39:50.824885+00:00 0d182d364752354b gwyinit-81253471b07a140b5de7da2 1 - -  src/gwyinit.c:933:gwyinit_sigwait: signal 17 cought...\n"
+        "<158>1 2022-03-14T09:39:50.825778+00:00 0d182d364752354b gwyinit-81253471b07a140b5de7da2 1 - -  src/gwyinit.c:900:gwyinit_sigwait_dispatch: child returned with exit code 0\n"
+        "<132>1 2022-03-14T09:39:50.945242+00:00 0d182d364752354b spibtm-df00fb421be6cd06ccbdd099 - - -  src/spi_btm.c:243:index_settings_timeout_cb: timeout!\n"
+        "<156>1 2022-03-14T09:39:50.949604+00:00 0d182d364752354b gwyinit-81253471b07a140b5de7da2 106 - -  src/gwyinit.c:118:gwyinit_supervisor: spibtm returned 256\n"
+        "<158>1 2022-03-14T09:39:50.950278+00:00 0d182d364752354b natsd-ed8fdcb48dd59d81aa3d64a43 97 - -  src/natsd.c:449:natsd_uv_read_cb: EOF received from [0xbe8416c0], cleaning up...\n"
+        "<158>1 2022-03-14T09:39:50.951334+00:00 0d182d364752354b gwyinit-81253471b07a140b5de7da2 106 - -  src/gwyinit.c:153:gwyinit_supervisor: sleeping for 2.377101 seconds (where 0.960754 is additional jitter)\n"
+        "<30>1 2022-03-14T09:39:51.017616+00:00 0d182d364752354b avahi-autoipd(eth0) 200 - -  client: ip: RTNETLINK answers: No such process\n"
+        "<158>1 2022-03-14T09:39:51.080843+00:00 0d182d364752354b gwyinit-81253471b07a140b5de7da2 1 - -  src/gwyinit.c:933:gwyinit_sigwait: signal 17 cought...\n"
+        "<158>1 2022-03-14T09:39:51.081416+00:00 0d182d364752354b gwyinit-81253471b07a140b5de7da2 1 - -  src/gwyinit.c:900:gwyinit_sigwait_dispatch: child returned with exit code 0\n"
+        "<158>1 2022-03-14T09:39:51.186568+00:00 0d182d364752354b gwyntp-a8291163586021855b77f3d9 267 - -  src/gwyntp.c:149:gwyntp_ntpservers_updated_cb: NTP servers list updated, restarting\n"
+        "<158>1 2022-03-14T09:39:51.191671+00:00 0d182d364752354b natsd-ed8fdcb48dd59d81aa3d64a43 97 - -  src/natsd.c:449:natsd_uv_read_cb: EOF received from [0xbe7d1110], cleaning up...\n"
+        "<158>1 2022-03-14T09:39:51.192635+00:00 0d182d364752354b gwyinit-81253471b07a140b5de7da2 1 - -  src/gwyinit.c:933:gwyinit_sigwait: signal 17 cought...\n"
+        "<156>1 2022-03-14T09:39:51.193274+00:00 0d182d364752354b gwyinit-81253471b07a140b5de7da2 129 - -  src/gwyinit.c:118:gwyinit_supervisor: gwyntp returned 256\n"
+        "<158>1 2022-03-14T09:39:51.193620+00:00 0d182d364752354b gwyinit-81253471b07a140b5de7da2 129 - -  src/gwyinit.c:153:gwyinit_supervisor: sleeping for 2.456442 seconds (where 0.004115 is additional jitter)\n"
+        "<158>1 2022-03-14T09:39:51.193891+00:00 0d182d364752354b gwyinit-81253471b07a140b5de7da2 1 - -  src/gwyinit.c:900:gwyinit_sigwait_dispatch: child returned with exit code 15\n"
+        "<158>1 2022-03-14T09:39:51.205509+00:00 0d182d364752354b natsd-ed8fdcb48dd59d81aa3d64a43 97 - -  src/natsd.c:465:natsd_uv_read_cb: read -104 bytes from [0xbe8416c0], which is invalid - cleaning up...\n"
+        "<14>1 2022-03-14T09:39:51.344315+00:00 0d182d364752354b gwyhk - - -  ok mdnsd is running now - pid 338\n"
+        "<14>1 2022-03-14T09:39:51.355590+00:00 0d182d364752354b gwyhk - - -  src/gwyhk_mdnsd.c:55:gwyhk_mdnsd_task: Waiting for file: /tmp/mdns_services.conf\n"
+        "<11>1 2022-03-14T09:39:51.592603+00:00 0d182d364752354b gwyupdate-2.2.0 298 - -  src/gwyupdate.c:754:gwyupdate_fetch_hawkbit_security_token: curl_easy_perform: 6: Couldn't resolve host name\n"
+        "<11>1 2022-03-14T09:39:51.592729+00:00 0d182d364752354b gwyupdate-2.2.0 298 - -  src/gwyupdate.c:827:main: gwyupdate_fetch_hawkbit_security_token returned -1\n"
+        "<156>1 2022-03-14T09:39:51.594804+00:00 0d182d364752354b gwyinit-81253471b07a140b5de7da2 130 - -  src/gwyinit.c:118:gwyinit_supervisor: gwyupdate returned 256\n"
+        "<158>1 2022-03-14T09:39:51.595449+00:00 0d182d364752354b gwyinit-81253471b07a140b5de7da2 130 - -  src/gwyinit.c:153:gwyinit_supervisor: sleeping for 12.154268 seconds (where 0.285088 is additional jitter)\n";
+        
+
+    int buf_len = strlen(buf);
+
+
+    ret = lrsyslog_client_parser_parse(
+        /* parser = */ &lrsyslog_client_parser,
+        /* buf = */ buf,
+        /* buf_len = */ buf_len
+    );
+    assert(139 == ret);
+    assert(1 == cb_called);
+
+
+    ret = lrsyslog_client_parser_parse(
+        /* parser = */ &lrsyslog_client_parser,
+        /* buf = */ buf + 139,
+        /* buf_len = */ buf_len - 139
+    );
+    assert(151 == ret);
+    assert(2 == cb_called);
+
+
+    ret = lrsyslog_client_parser_parse(
+        /* parser = */ &lrsyslog_client_parser,
+        /* buf = */ buf + 139 + 151,
+        /* buf_len = */ buf_len - 139 - 151
+    );
+    assert(172 == ret);
+    assert(3 == cb_called);
+
+
+    ret = lrsyslog_client_parser_parse(
+        /* parser = */ &lrsyslog_client_parser,
+        /* buf = */ buf + 139 + 151 + 172,
+        /* buf_len = */ buf_len - 139 - 151 - 172
+    );
+    assert(150 == ret);
+    assert(4 == cb_called);
+
+
+    ret = lrsyslog_client_parser_parse(
+        /* parser = */ &lrsyslog_client_parser,
+        /* buf = */ buf + 139 + 151 + 172,
+        /* buf_len = */ buf_len - 139 - 151 - 172
+    );
+    assert(150 == ret);
+    assert(5 == cb_called);
 
 
     printf("%s: OK\n", __func__);
@@ -395,6 +522,8 @@ int test_lrsyslog_client_parser_parses_log_with_no_src_cb (
     const uint32_t pid,
     const char * msg,
     const uint32_t msg_len,
+    const char * msg_len_str,
+    const uint32_t msg_len_str_len,
     void * user_data
 )
 {
@@ -412,11 +541,11 @@ int test_lrsyslog_client_parser_parses_log_with_no_src_cb (
 
 void test_lrsyslog_client_parser_parses_log_with_no_src() {
     int ret = 0;
-    struct lrsyslog_syslog_s lrsyslog_syslog = {0};
+    struct lrsyslog_client_parser_s lrsyslog_client_parser = {0};
     int cb_called = 0;
 
     ret = lrsyslog_client_parser_init(
-        /* parser = */ &lrsyslog_syslog,
+        /* parser = */ &lrsyslog_client_parser,
         /* log_cb = */ test_lrsyslog_client_parser_parses_log_with_no_src_cb,
         /* user_data = */ &cb_called
     );
@@ -426,11 +555,11 @@ void test_lrsyslog_client_parser_parses_log_with_no_src() {
     int buf_len = strlen(buf);
 
     ret = lrsyslog_client_parser_parse(
-        /* parser = */ &lrsyslog_syslog,
+        /* parser = */ &lrsyslog_client_parser,
         /* buf = */ buf,
         /* buf_len = */ buf_len
     );
-    assert(0 == ret);
+    assert(buf_len == ret);
     assert(1 == cb_called);
 
     printf("%s: OK\n", __func__);
@@ -454,6 +583,8 @@ int test_lrsyslog_client_parser_facility_severity_cb (
     const uint32_t pid,
     const char * msg,
     const uint32_t msg_len,
+    const char * msg_len_str,
+    const uint32_t msg_len_str_len,
     void * user_data
 )
 {
@@ -474,11 +605,11 @@ void test_lrsyslog_client_parser_facility_severity (
 )
 {
     int ret = 0;
-    struct lrsyslog_syslog_s lrsyslog_syslog = {0};
+    struct lrsyslog_client_parser_s lrsyslog_client_parser = {0};
     struct test_lrsyslog_client_parser_facility_severity_s cb_info = {0};
 
     ret = lrsyslog_client_parser_init(
-        /* parser = */ &lrsyslog_syslog,
+        /* parser = */ &lrsyslog_client_parser,
         /* log_cb = */ test_lrsyslog_client_parser_facility_severity_cb,
         /* context = */ &cb_info
     );
@@ -493,11 +624,11 @@ void test_lrsyslog_client_parser_facility_severity (
     int buf_len = strlen(buf);
 
     ret = lrsyslog_client_parser_parse(
-        /* parser = */ &lrsyslog_syslog,
+        /* parser = */ &lrsyslog_client_parser,
         /* buf = */ buf,
         /* buf_len = */ buf_len
     );
-    assert(0 == ret);
+    assert(buf_len == ret);
     assert(1 == cb_info.cb_called);
     assert(facility == cb_info.facility);
     assert(severity == cb_info.severity);
@@ -526,6 +657,8 @@ int test_lrsyslog_client_parser_does_not_parse_invalid_prival_cb (
     const uint32_t pid,
     const char * msg,
     const uint32_t msg_len,
+    const char * msg_len_str,
+    const uint32_t msg_len_str_len,
     void * user_data
 )
 {
@@ -537,10 +670,10 @@ void test_lrsyslog_client_parser_does_not_parse_invalid_prival (
 ) 
 {
     int ret = 0;
-    struct lrsyslog_syslog_s lrsyslog_syslog = {0};
+    struct lrsyslog_client_parser_s lrsyslog_client_parser = {0};
 
     ret = lrsyslog_client_parser_init(
-        /* parser = */ &lrsyslog_syslog,
+        /* parser = */ &lrsyslog_client_parser,
         /* callbacks = */ test_lrsyslog_client_parser_does_not_parse_invalid_prival_cb,
         /* context = */ NULL
     );
@@ -554,11 +687,11 @@ void test_lrsyslog_client_parser_does_not_parse_invalid_prival (
     int buf_len = strlen(buf);
 
     ret = lrsyslog_client_parser_parse(
-        /* parser = */ &lrsyslog_syslog,
+        /* parser = */ &lrsyslog_client_parser,
         /* buf = */ buf,
         /* buf_len = */ buf_len
     );
-    assert(0 == ret);
+    assert(buf_len == ret);
     assert(0 == log_cb_called);
 
     return 0;
@@ -588,6 +721,7 @@ int main (
     test_lrsyslog_client_parser_parses_log_from_gwy01_0();
     test_lrsyslog_client_parser_parses_log_from_gwy01_1();
     test_lrsyslog_client_parser_parses_log_from_gwy01_2();
+    test_lrsyslog_client_parser_parses_log_from_gwy01_3();
     test_lrsyslog_client_parser_parses_log_with_no_src();
     test_lrsyslog_client_parser_parses_facilities_and_severities();
     test_lrsyslog_client_parser_does_not_parse_invalid_privals();

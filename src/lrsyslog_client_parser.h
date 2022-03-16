@@ -2,13 +2,7 @@
 
 #include <stdint.h>
 
-struct lrsyslog_client_parser_s {
-    int cs;
-    int fd;
-    int prival;
-    int severity;
-    int facility;
-
+struct lrsyslog_client_parser_callbacks_s {
     int (*log_cb)(
         const char * host,
         const uint32_t host_len,
@@ -23,6 +17,16 @@ struct lrsyslog_client_parser_s {
         const uint32_t msg_len_str_len,
         void * user_data
     );
+};
+
+struct lrsyslog_client_parser_s {
+    int cs;
+    int fd;
+    int prival;
+    int severity;
+    int facility;
+
+    struct lrsyslog_client_parser_callbacks_s cbs;
     void * user_data;
 
     char msg[1024];
@@ -40,27 +44,16 @@ struct lrsyslog_client_parser_s {
     int pid;
 };
 
+
 int lrsyslog_client_parser_init (
     struct lrsyslog_client_parser_s * parser,
-    int (*log_cb)(
-        const char * host,
-        const uint32_t host_len,
-        const char * tag,
-        const uint32_t tag_len,
-        const uint32_t facility,
-        const uint32_t severity,
-        const uint32_t pid,
-        const char * msg,
-        const uint32_t msg_len,
-        const char * msg_len_str,
-        const uint32_t msg_len_str_len,
-        void * user_data
-    ),
+    struct lrsyslog_client_parser_callbacks_s callbacks,
     void * user_data
 );
 
 int lrsyslog_client_parser_parse (
     struct lrsyslog_client_parser_s * parser,
-    const char * const buf,
-    const int buf_len
+    const uint8_t * const buf,
+    const uint32_t buf_len,
+    uint32_t * parsed_len
 );

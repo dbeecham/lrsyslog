@@ -10,6 +10,7 @@
         "type": "github"
       },
       "original": {
+        "narHash": "sha256-hgdcyLo2d8N2BmHuPMWhsXlorv1ZDkhBjq1gMYvFbdo=",
         "owner": "NixOS",
         "repo": "nixpkgs",
         "rev": "a102368ac4c3944978fecd9d7295a96d64586db5",

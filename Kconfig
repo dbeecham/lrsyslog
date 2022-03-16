@@ -5,6 +5,8 @@ menu "Useful compile-time flags"
 
     choice 
         prompt "Compile-time optimizations"
+        config OPTIMIZE_NORMAL
+            bool "Normal (-O2)"
         config OPTIMIZE_SMALL
             bool "Small (-Os)"
         config OPTIMIZE_DEBUG
@@ -126,20 +128,37 @@ menu "syslog host/port"
         default "0.0.0.0"
 
     config PORT
-        int "syslog listen port"
+        int "default syslog listen port"
         default 514
 endmenu
 
+config CLIENT_READ_BUF_LEN
+    int "client read buf size"
+    default 4096
+
+config CLIENT_TIMEOUT_S
+    int "client read timeout (seconds)"
+    default 120
+
+config NATS_READ_BUF_LEN
+    int "nats read buf size"
+    default 4096
+
+config NATS_TIMEOUT_S
+    int "nats read timeout (seconds)"
+    default 240
+
+config URING_DEPTH
+    int "uring size (power of 2)"
+    default 256
+
+config URING_HANDLES
+    int "available uring handles (power of 2)"
+    default 4096
+
 config MAX_CLIENTS
     int "max simultaneous clients"
-    default 64
-    help
-        Each client adds about 1.4k stack memory usage.
-
-config NUM_THREADS
-    int "Number of worker threads"
-    default 4
-
+    default 1024
 
 config SYSLOG_IDENT
     string "SYSLOG_IDENT"
