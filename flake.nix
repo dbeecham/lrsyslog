@@ -12,6 +12,7 @@
   };
 
   outputs = { self, nixpkgs, ...}: {
+
     defaultPackage.x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.stdenv.mkDerivation {
       name = "lrsyslog";
       srcs = [
@@ -37,6 +38,20 @@
       '';
       installFlags = [ "DESTDIR=$(out)" "PREFIX=/" ];
     };
+
+    nixosModule = { ... }: {
+      systemd.services.lrsyslog = {
+        wantedBy = [ "multi-user.target" ];
+        after = [ "nats.service" ];
+        requires = [ "nats.service" ];
+        serviceConfig = {
+          Type = "simple";
+          Restart = "always";
+          ExecStart = "${self.defaultPackage.x86_64-linux}/bin/lrsyslog";
+        };
+      };
+    };
+
   };
 
 }
