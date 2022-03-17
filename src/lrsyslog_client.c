@@ -233,10 +233,18 @@ int lrsyslog_client_syslog_cb (
     io_uring_prep_writev(
         /* sqe = */ sqe,
         /* fd = */ lrsyslog->nats.fd,
-        /* iovec = */ (struct iovec[9]) {
+        /* iovec = */ (struct iovec[11]) {
             {
                 .iov_base = "PUB lrsyslog.",
                 .iov_len = 13
+            },
+            {
+                .iov_base = (char*)host,
+                .iov_len = host_len
+            },
+            {
+                .iov_base = ".",
+                .iov_len = 1
             },
             {
                 .iov_base = (char*)tag,
@@ -271,7 +279,7 @@ int lrsyslog_client_syslog_cb (
                 .iov_len = 2
             }
         },
-        /* ioved_len = */ 9,
+        /* ioved_len = */ 11,
         /* offset = */ 0
     );
     io_uring_sqe_set_data(sqe, event);
