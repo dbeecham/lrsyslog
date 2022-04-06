@@ -11,9 +11,20 @@
     };
   };
 
-  outputs = { self, nixpkgs, ...}: {
+  outputs = { self, nixpkgs, ... }: {
+    packages.x86_64-linux.default = nixpkgs.lib.makeOverridable self.derivations.default {
+      inherit (nixpkgs.legacyPackages.x86_64-linux.stdenv) mkDerivation;
+      inherit (nixpkgs.legacyPackages.x86_64-linux) ragel kconfig-frontends liburing;
+    };
 
-    defaultPackage.x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.stdenv.mkDerivation {
+    derivations.default = {
+      mkDerivation,
+      ragel,
+      kconfig-frontends,
+      liburing,
+      nats ? { host = "127.0.0.1"; port = "4222"; }
+    }:
+    mkDerivation {
       name = "lrsyslog";
       srcs = [
         ./Makefile
@@ -27,30 +38,20 @@
         done
       '';
       depsBuildBuild = [
-        nixpkgs.legacyPackages.x86_64-linux.ragel 
-        nixpkgs.legacyPackages.x86_64-linux.kconfig-frontends 
+        ragel 
+        kconfig-frontends 
       ];
       buildInputs = [
-        nixpkgs.legacyPackages.x86_64-linux.liburing 
+        liburing 
       ];
       configurePhase = ''
         make defconfig
       '';
+      makeFlags = [ 
+        "CONFIG_NATS_HOST=\"${nats.host}\""
+        "CONFIG_NATS_PORT=\"${nats.port}\""
+      ];
       installFlags = [ "DESTDIR=$(out)" "PREFIX=/" ];
-    };
-
-    nixosModule = { ... }: {
-      systemd.services.lrsyslog = {
-        wantedBy = [ "multi-user.target" ];
-        after = [ "nats.service" ];
-        requires = [ "nats.service" ];
-        serviceConfig = {
-          Type = "simple";
-          Restart = "always";
-          RestartSec = "1sec";
-          ExecStart = "${self.defaultPackage.x86_64-linux}/bin/lrsyslog";
-        };
-      };
     };
 
   };
